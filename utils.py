@@ -38,6 +38,7 @@ class temp(object):
     CANCEL = False  
     START_TIME = 0  
     CURRENT = 0    
+    SESSIONS = {}   # ✅ ADD THIS
 
 # =================================================
 # 📢 FORCE SUBSCRIBE CHECK (Updated)
