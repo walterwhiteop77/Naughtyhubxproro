@@ -1,45 +1,24 @@
 from pyrogram import Client, filters
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, InputMediaVideo
 from database.users_db import db
-from utils import temp
+
+print("🔥 NAVIGATION PLUGIN LOADED")
 
 
-@Client.on_callback_query(filters.regex("^next$"))
-async def next_video(client, query):
-    await query.answer("Loading next...")
+@Client.on_callback_query()
+async def handle_all_callbacks(client, query):
+    print("CLICKED:", query.data)
 
-    user_id = query.from_user.id
+    await query.answer()
 
-    video_id = await db.get_unseen_video(user_id)
-    if not video_id:
+    if query.data == "next":
         video_id = await db.get_random_video()
 
-    if not video_id:
-        return await query.answer("No videos!", show_alert=True)
+    elif query.data == "back":
+        video_id = await db.get_random_video()
 
-    buttons = InlineKeyboardMarkup([
-        [
-            InlineKeyboardButton("⏮ Back", callback_data="back"),
-            InlineKeyboardButton("⏭ Next", callback_data="next")
-        ]
-    ])
-
-    await query.message.edit_media(
-        media=InputMediaVideo(video_id),
-        reply_markup=buttons
-    )
-
-
-@Client.on_callback_query(filters.regex("^back$"))
-async def back_video(client, query):
-    await query.answer("Loading previous...")
-
-    user_id = query.from_user.id
-
-    video_id = await db.get_random_video()
-
-    if not video_id:
-        return await query.answer("No videos!", show_alert=True)
+    else:
+        return  # ignore other buttons
 
     buttons = InlineKeyboardMarkup([
         [
