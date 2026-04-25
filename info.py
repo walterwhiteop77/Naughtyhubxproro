@@ -12,34 +12,34 @@ def str_to_bool(val, default=False):
 # =========================================================
 # 🤖 BOT BASIC INFORMATION
 # =========================================================
-API_ID = int(environ.get("API_ID", "0"))
-API_HASH = environ.get("API_HASH", "")
+API_ID = int(environ.get("API_ID", "20217846"))
+API_HASH = environ.get("API_HASH", "fc2d0079fe53ffadd23fceb32c825285")
 BOT_TOKEN = environ.get("BOT_TOKEN", "")
 PORT = int(environ.get("PORT", "8080"))
 TIMEZONE = environ.get("TIMEZONE", "Asia/Kolkata")
-OWNER_USERNAME = environ.get("OWNER_USERNAME", "BOT_OWNER26")
+OWNER_USERNAME = environ.get("OWNER_USERNAME", "Uknowme45678")
 
 # =========================================================
 # 💾 DATABASE CONFIGURATION
 # =========================================================
 DB_URL = environ.get("DATABASE_URI", "")
-DB_NAME = environ.get("DATABASE_NAME", "testing")
+DB_NAME = environ.get("DATABASE_NAME", "Cluster0")
 
 # =========================================================
 # 📢 CHANNELS & ADMINS
 # =========================================================
-ADMINS = int(environ.get("ADMINS", "0"))
+ADMINS = int(environ.get("ADMINS", "7903367518"))
 
-LOG_CHANNEL = int(environ.get("LOG_CHANNEL", "0"))
-PREMIUM_LOGS = int(environ.get("PREMIUM_LOGS", "0"))
-VERIFIED_LOG = int(environ.get("VERIFIED_LOG", "0"))
+LOG_CHANNEL = int(environ.get("LOG_CHANNEL", "-1002031127227"))
+PREMIUM_LOGS = int(environ.get("PREMIUM_LOGS", "-1002702898412"))
+VERIFIED_LOG = int(environ.get("VERIFIED_LOG", "-1002378958723"))
 
-POST_CHANNEL = int(environ.get("POST_CHANNEL", "0"))
-VIDEO_CHANNEL = int(environ.get("VIDEO_CHANNEL", "0"))
-BRAZZER_CHANNEL = int(environ.get("BRAZZER_CHANNEL", "0"))
+POST_CHANNEL = int(environ.get("POST_CHANNEL", "-1002843484373"))
+VIDEO_CHANNEL = int(environ.get("VIDEO_CHANNEL", "-1002756243661"))
+BRAZZER_CHANNEL = int(environ.get("BRAZZER_CHANNEL", "-1002737831383"))
 
 # Auth channels list
-auth_channel_str = environ.get("AUTH_CHANNEL", "")
+auth_channel_str = environ.get("AUTH_CHANNEL", "-1002843484373")
 AUTH_CHANNEL = [int(x) for x in auth_channel_str.split() if x.strip().lstrip("-").isdigit()]
 
 # =========================================================
@@ -66,23 +66,23 @@ SHORTLINK_API = environ.get("SHORTLINK_API", "")
 POST_SHORTLINK_URL = environ.get("POST_SHORTLINK_URL", "")
 POST_SHORTLINK_API = environ.get("POST_SHORTLINK_API", "")
 VERIFY_EXPIRE = int(environ.get("VERIFY_EXPIRE", "3600"))
-TUTORIAL_LINK = environ.get("TUTORIAL_LINK", "")
+TUTORIAL_LINK = environ.get("TUTORIAL_LINK", "https://t.me/+ny_72fisEuJmMmI1")
 
 # =========================================================
 # 💳 PAYMENT SETTINGS
 # =========================================================
-UPI_ID = environ.get("UPI_ID", "")
-QR_CODE_IMAGE = environ.get("QR_CODE_IMAGE", "")
+UPI_ID = environ.get("UPI_ID", "fff")
+QR_CODE_IMAGE = environ.get("QR_CODE_IMAGE", "https://i.ibb.co/Q3fzgQ69/x.jpg")
 
 # =========================================================
 # 🖼️ IMAGES
 # =========================================================
-START_PIC = environ.get("START_PIC", "")
-AUTH_PICS = environ.get("AUTH_PICS", "")
-VERIFY_IMG = environ.get("VERIFY_IMG", "")
-NO_IMG = environ.get("NO_IMG", "")
+START_PIC = environ.get("START_PIC", "https://i.ibb.co/Q3fzgQ69/x.jpg")
+AUTH_PICS = environ.get("AUTH_PICS", "https://i.ibb.co/Q3fzgQ69/x.jpg")
+VERIFY_IMG = environ.get("VERIFY_IMG", "https://i.ibb.co/Q3fzgQ69/x.jpg")
+NO_IMG = environ.get("NO_IMG", "https://i.ibb.co/Q3fzgQ69/x.jpg")
 
 # =========================================================
 # 🌐 WEB APP
 # =========================================================
-WEB_APP_URL = environ.get("WEB_APP_URL", "")
+WEB_APP_URL = environ.get("WEB_APP_URL", "https://poii.onrender.com")
