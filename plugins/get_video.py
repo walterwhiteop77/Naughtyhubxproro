@@ -1,5 +1,5 @@
 from os import environ
-from pyrogram import Client, filters
+from pyrogram import Client, filters, StopPropagation
 from pyrogram.types import (
     InlineKeyboardMarkup,
     InlineKeyboardButton,
@@ -288,9 +288,31 @@ async def handle_video_request(client, m: Message):
 
 # ======================================================================
 # Inline-button callbacks: Next / Back / Close / no-op
+# ----------------------------------------------------------------------
+# IMPORTANT: group=-1 so this runs BEFORE the catch-all
+# `@Client.on_callback_query()` defined in plugins/command.py.
+# We also raise StopPropagation at the end so the catch-all does not
+# fire a second time on the same `vp:*` callback.
 # ======================================================================
-@Client.on_callback_query(filters.regex(r"^vp:(next|back|close|noop):(\d+)$"))
+@Client.on_callback_query(
+    filters.regex(r"^vp:(next|back|close|noop):(\d+)$"), group=-1
+)
 async def video_player_callback(client, q: CallbackQuery):
+    try:
+        await _video_player_callback_impl(client, q)
+    except StopPropagation:
+        raise
+    except Exception as e:
+        try:
+            await q.answer(f"Player error: {e}", show_alert=True)
+        except Exception:
+            pass
+    # Always stop propagation so the catch-all handler in command.py
+    # does NOT also receive this `vp:*` callback.
+    raise StopPropagation
+
+
+async def _video_player_callback_impl(client, q: CallbackQuery):
     action = q.matches[0].group(1)
     owner_id = int(q.matches[0].group(2))
 
