@@ -39,18 +39,19 @@ ALL_VIDEOS_LABEL = "All Videos"
 
 
 # ---- bookmark caps (env-configurable) ----
-def bookmark_limit_free() -> int:
-    try:
-        return int(os.environ.get("BOOKMARK_LIMIT_FREE", "5"))
-    except ValueError:
-        return 5
+class PlayerDB:
 
+    def bookmark_limit_free(self) -> int:
+        try:
+            return int(os.environ.get("BOOKMARK_LIMIT_FREE", "5"))
+        except ValueError:
+            return 5
 
-def bookmark_limit_premium() -> int:
-    try:
-        return int(os.environ.get("BOOKMARK_LIMIT_PREMIUM", "15"))
-    except ValueError:
-        return 15
+    def bookmark_limit_premium(self) -> int:
+        try:
+            return int(os.environ.get("BOOKMARK_LIMIT_PREMIUM", "15"))
+        except ValueError:
+            return 15
 
 
 class PlayerDB:
