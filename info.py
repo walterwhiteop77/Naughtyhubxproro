@@ -61,10 +61,10 @@ PREMIUM_DAILY_LIMIT = int(environ.get("PREMIUM_DAILY_LIMIT", "50"))
 # =========================================================
 # 🔗 SHORTLINK & VERIFICATION
 # =========================================================
-SHORTLINK_URL = environ.get("SHORTLINK_URL", "")
-SHORTLINK_API = environ.get("SHORTLINK_API", "")
-POST_SHORTLINK_URL = environ.get("POST_SHORTLINK_URL", "")
-POST_SHORTLINK_API = environ.get("POST_SHORTLINK_API", "")
+SHORTLINK_URL = environ.get("SHORTLINK_URL", "vplink.in")
+SHORTLINK_API = environ.get("SHORTLINK_API", "f9da968c27a8594f2bbc3b2cd1e8778fa756b3a5")
+POST_SHORTLINK_URL = environ.get("POST_SHORTLINK_URL", "vplink.in")
+POST_SHORTLINK_API = environ.get("POST_SHORTLINK_API", "f9da968c27a8594f2bbc3b2cd1e8778fa756b3a5")
 VERIFY_EXPIRE = int(environ.get("VERIFY_EXPIRE", "3600"))
 TUTORIAL_LINK = environ.get("TUTORIAL_LINK", "https://t.me/+ny_72fisEuJmMmI1")
 
