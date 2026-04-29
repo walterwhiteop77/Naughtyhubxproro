@@ -484,11 +484,36 @@ async def _video_player_callback_impl(client, q: CallbackQuery):
 
     # ---------------- BOOKMARK ----------------
     if action == "bookmark":
-        is_now_bm = await player_db.toggle_bookmark(owner_id, current_file_id)
-        await q.answer(
-            "📑 Bookmarked." if is_now_bm else "Bookmark removed."
+        is_premium = await db.has_premium_access(owner_id)
+        cap = (
+            player_db.bookmark_limit_premium() if is_premium
+            else player_db.bookmark_limit_free()
         )
-        await _refresh_player(client, session, current_file_id)
+        result = await player_db.try_toggle_bookmark(
+            owner_id, current_file_id, max_count=cap
+        )
+        if result == "added":
+            count = await player_db.count_bookmarks(owner_id)
+            await q.answer(f"📑 Bookmarked. ({count}/{cap})")
+            await _refresh_player(client, session, current_file_id)
+        elif result == "removed":
+            await q.answer("Bookmark removed.")
+            await _refresh_player(client, session, current_file_id)
+        else:  # limit_reached
+            if is_premium:
+                msg = (
+                    f"📑 Bookmark limit reached ({cap}).\n\n"
+                    f"Open /bookmarks and remove one to free a slot."
+                )
+                await q.answer(msg, show_alert=True)
+            else:
+                await q.answer(
+                    f"📑 Free users can save up to {cap} bookmarks.\n"
+                    f"Upgrade to Premium for "
+                    f"{player_db.bookmark_limit_premium()} slots.",
+                    show_alert=True,
+                )
+                await _send_premium_upsell(client, q, session, "More Bookmarks")
         return
 
     # ---------------- DOWNLOAD (premium-only) ----------------

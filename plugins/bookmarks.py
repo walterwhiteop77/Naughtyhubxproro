@@ -5,6 +5,18 @@ Replaying a bookmarked video is FREE and does NOT consume the daily
 limit (it's a re-watch of a video the user explicitly chose to keep).
 This rewards the bookmark feature and makes premium tags like Download
 even more useful.
+
+Caps:
+  - Free user:    BOOKMARK_LIMIT_FREE     bookmarks (default 5)
+  - Premium user: BOOKMARK_LIMIT_PREMIUM  bookmarks (default 15)
+
+Caps are enforced inside the player (the 📑 Bookmark button), and shown
+on the /bookmarks page header.
+
+IMPORTANT: callback_data is hard-capped at 64 bytes by Telegram. We
+therefore use the short numeric Video ID (`video_number`) as the public
+handle inside callbacks, NOT the raw file_id (which is ~70+ chars and
+would silently break the buttons).
 """
 
 from pyrogram import Client, filters, StopPropagation
@@ -15,6 +27,7 @@ from pyrogram.types import (
     CallbackQuery,
 )
 
+from database.users_db import db
 from database.player_db import player_db, ALL_VIDEOS_LABEL
 from info import PROTECT_CONTENT, FSUB
 from plugins.ban_manager import ban_manager
@@ -37,12 +50,20 @@ async def _build_page(user_id: int, page: int = 0):
     file_ids = await player_db.list_bookmarks(user_id, limit=200)
     total = len(file_ids)
 
+    is_premium = await db.has_premium_access(user_id)
+    cap = (
+        player_db.bookmark_limit_premium() if is_premium
+        else player_db.bookmark_limit_free()
+    )
+
     if total == 0:
-        return (
+        text = (
             "📑 <b>You have no bookmarks yet.</b>\n\n"
             "Open <b>/getvideo</b> and tap <b>📑 Bookmark</b> on any "
-            "video in the player to save it here for unlimited replays."
-        ), None, 0, 0
+            "video in the player to save it here for unlimited replays.\n\n"
+            f"<i>Slots: 0 / {cap}</i>"
+        )
+        return text, None, 0, 0
 
     pages = max(1, (total + PAGE_SIZE - 1) // PAGE_SIZE)
     page = max(0, min(page, pages - 1))
@@ -53,14 +74,16 @@ async def _build_page(user_id: int, page: int = 0):
     for fid in chunk:
         n = await player_db.ensure_video_number(fid)
         cat = (await player_db.get_category(fid)) or ALL_VIDEOS_LABEL
+        # Use the SHORT numeric video_number in callback_data — file_id
+        # is too long (Telegram caps callback_data at 64 bytes).
         rows.append([
             InlineKeyboardButton(
                 f"▶️ #{n} · 📂 {cat}",
-                callback_data=f"bm:play:{user_id}:{fid}",
+                callback_data=f"bm:p:{user_id}:{n}",
             ),
             InlineKeyboardButton(
                 "🗑",
-                callback_data=f"bm:rem:{user_id}:{page}:{fid}",
+                callback_data=f"bm:r:{user_id}:{page}:{n}",
             ),
         ])
 
@@ -68,24 +91,26 @@ async def _build_page(user_id: int, page: int = 0):
         nav = []
         if page > 0:
             nav.append(InlineKeyboardButton(
-                "⬅️", callback_data=f"bm:page:{user_id}:{page - 1}"
+                "⬅️", callback_data=f"bm:pg:{user_id}:{page - 1}"
             ))
         nav.append(InlineKeyboardButton(
-            f"{page + 1}/{pages}", callback_data=f"bm:noop:{user_id}"
+            f"{page + 1}/{pages}", callback_data=f"bm:n:{user_id}"
         ))
         if page < pages - 1:
             nav.append(InlineKeyboardButton(
-                "➡️", callback_data=f"bm:page:{user_id}:{page + 1}"
+                "➡️", callback_data=f"bm:pg:{user_id}:{page + 1}"
             ))
         rows.append(nav)
 
     rows.append([
-        InlineKeyboardButton("✖️ Close", callback_data=f"bm:close:{user_id}")
+        InlineKeyboardButton("✖️ Close", callback_data=f"bm:x:{user_id}")
     ])
 
+    plan = "Premium" if is_premium else "Free"
     text = (
-        f"📑 <b>Your Bookmarks</b> ({total})\n"
-        f"<i>Tap a video to play it — replays don't count toward your daily limit.</i>"
+        f"📑 <b>Your Bookmarks</b>\n"
+        f"<i>Slots: {total} / {cap}  ·  Plan: {plan}</i>\n\n"
+        f"Tap a video to play it — replays don't count toward your daily limit."
     )
     return text, InlineKeyboardMarkup(rows), page, pages
 
@@ -106,7 +131,7 @@ async def bookmarks_cmd(client, m: Message):
 
     text, kb, _, _ = await _build_page(m.from_user.id, 0)
     if kb is None:
-        return await m.reply(text)
+        return await m.reply(text, disable_web_page_preview=True)
     await m.reply(text, reply_markup=kb, disable_web_page_preview=True)
 
 
@@ -114,7 +139,7 @@ async def bookmarks_cmd(client, m: Message):
 # Callback dispatcher (group=-1 to outrank command.py's catch-all)
 # ======================================================================
 @Client.on_callback_query(
-    filters.regex(r"^bm:(play|rem|page|noop|close):.+$"), group=-1
+    filters.regex(r"^bm:(p|r|pg|n|x):.+$"), group=-1
 )
 async def bookmark_callback(client, q: CallbackQuery):
     try:
@@ -130,7 +155,8 @@ async def bookmark_callback(client, q: CallbackQuery):
 
 
 async def _bookmark_callback_impl(client, q: CallbackQuery):
-    parts = q.data.split(":", 4)  # action, owner, [extra1], [extra2/file_id]
+    parts = q.data.split(":")
+    # parts: ["bm", action, owner_id, ...]
     action = parts[1]
     owner_id = int(parts[2])
 
@@ -139,11 +165,11 @@ async def _bookmark_callback_impl(client, q: CallbackQuery):
             "This bookmarks list isn't for you.", show_alert=True
         )
 
-    if action == "noop":
+    if action == "n":  # noop (page indicator)
         return await q.answer()
 
     # ----- CLOSE -----
-    if action == "close":
+    if action == "x":
         try:
             await q.message.delete()
         except Exception:
@@ -151,12 +177,12 @@ async def _bookmark_callback_impl(client, q: CallbackQuery):
         return await q.answer("Closed")
 
     # ----- PAGE -----
-    if action == "page":
+    if action == "pg":
         page = int(parts[3])
         text, kb, _, _ = await _build_page(owner_id, page)
         try:
             if kb is None:
-                await q.message.edit_text(text)
+                await q.message.edit_text(text, disable_web_page_preview=True)
             else:
                 await q.message.edit_text(
                     text, reply_markup=kb, disable_web_page_preview=True
@@ -166,15 +192,16 @@ async def _bookmark_callback_impl(client, q: CallbackQuery):
         return await q.answer()
 
     # ----- REMOVE -----
-    if action == "rem":
+    if action == "r":
         page = int(parts[3])
-        file_id = parts[4]
-        if await player_db.is_bookmarked(owner_id, file_id):
+        video_number = int(parts[4])
+        file_id = await player_db.get_file_id_by_number(video_number)
+        if file_id and await player_db.is_bookmarked(owner_id, file_id):
             await player_db.toggle_bookmark(owner_id, file_id)
         text, kb, _, _ = await _build_page(owner_id, page)
         try:
             if kb is None:
-                await q.message.edit_text(text)
+                await q.message.edit_text(text, disable_web_page_preview=True)
             else:
                 await q.message.edit_text(
                     text, reply_markup=kb, disable_web_page_preview=True
@@ -184,8 +211,13 @@ async def _bookmark_callback_impl(client, q: CallbackQuery):
         return await q.answer("🗑 Removed")
 
     # ----- PLAY -----
-    if action == "play":
-        file_id = parts[3]
+    if action == "p":
+        video_number = int(parts[3])
+        file_id = await player_db.get_file_id_by_number(video_number)
+        if not file_id:
+            return await q.answer(
+                "This video is no longer available.", show_alert=True
+            )
 
         # Tear down any existing player so we have a single active one
         existing = ACTIVE_PLAYERS.get(owner_id)
