@@ -38,6 +38,21 @@ def get_categories() -> list:
 ALL_VIDEOS_LABEL = "All Videos"
 
 
+# ---- bookmark caps (env-configurable) ----
+def bookmark_limit_free() -> int:
+    try:
+        return int(os.environ.get("BOOKMARK_LIMIT_FREE", "5"))
+    except ValueError:
+        return 5
+
+
+def bookmark_limit_premium() -> int:
+    try:
+        return int(os.environ.get("BOOKMARK_LIMIT_PREMIUM", "15"))
+    except ValueError:
+        return 15
+
+
 class PlayerDB:
     # ---------- indexes (idempotent) ----------
     async def ensure_indexes(self):
@@ -70,6 +85,15 @@ class PlayerDB:
             {"file_id": file_id}, {"$set": {"video_number": n}}
         )
         return n
+
+    async def get_file_id_by_number(self, n: int):
+        """Reverse lookup — file_id from a numeric Video ID. None if missing."""
+        try:
+            n = int(n)
+        except (TypeError, ValueError):
+            return None
+        v = await videos_col.find_one({"video_number": n}, {"file_id": 1})
+        return v.get("file_id") if v else None
 
     # ---------- category ----------
     async def get_category(self, file_id):
@@ -140,8 +164,47 @@ class PlayerDB:
             )
         )
 
+    async def count_bookmarks(self, user_id) -> int:
+        return await bookmarks_col.count_documents({"user_id": user_id})
+
+    async def try_toggle_bookmark(
+        self, user_id, file_id, max_count: int
+    ) -> str:
+        """
+        Atomic-ish bookmark toggle with a per-user cap.
+
+        Returns one of:
+          - "added"           — newly bookmarked
+          - "removed"         — was bookmarked, now removed
+          - "limit_reached"   — at cap, refused to add
+        """
+        existing = await bookmarks_col.find_one(
+            {"user_id": user_id, "file_id": file_id}
+        )
+        if existing:
+            await bookmarks_col.delete_one({"_id": existing["_id"]})
+            return "removed"
+
+        current = await bookmarks_col.count_documents({"user_id": user_id})
+        if current >= max_count:
+            return "limit_reached"
+
+        try:
+            await bookmarks_col.insert_one({
+                "user_id": user_id,
+                "file_id": file_id,
+                "added_at": datetime.now(timezone.utc),
+            })
+        except Exception:
+            # likely a duplicate-key race — treat as already added
+            pass
+        return "added"
+
     async def toggle_bookmark(self, user_id, file_id) -> bool:
-        """Returns True if it is now bookmarked, False if it was removed."""
+        """
+        Legacy uncapped toggle. Kept for back-compat; new code should use
+        try_toggle_bookmark with an explicit cap.
+        """
         existing = await bookmarks_col.find_one(
             {"user_id": user_id, "file_id": file_id}
         )
