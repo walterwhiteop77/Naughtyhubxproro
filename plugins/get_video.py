@@ -67,10 +67,15 @@ def _player_keyboard(user_id: int, index: int, history_len: int) -> InlineKeyboa
     next_btn = InlineKeyboardButton(
         "Next ➡️", callback_data=f"vp:next:{user_id}"
     )
+    shuffle_btn = InlineKeyboardButton(
+        "👑 Shuffle", callback_data=f"vp:shuffle:{user_id}"
+    )
     close_btn = InlineKeyboardButton(
         "✖️ Close Player", callback_data=f"vp:close:{user_id}"
     )
-    return InlineKeyboardMarkup([[back_btn, page_btn, next_btn], [close_btn]])
+    return InlineKeyboardMarkup(
+        [[back_btn, page_btn, next_btn], [shuffle_btn, close_btn]]
+    )
 
 
 async def _delete_player_after(user_id: int, chat_id: int, message_id: int):
@@ -295,7 +300,7 @@ async def handle_video_request(client, m: Message):
 # fire a second time on the same `vp:*` callback.
 # ======================================================================
 @Client.on_callback_query(
-    filters.regex(r"^vp:(next|back|close|noop):(\d+)$"), group=-1
+    filters.regex(r"^vp:(next|back|close|noop|shuffle):(\d+)$"), group=-1
 )
 async def video_player_callback(client, q: CallbackQuery):
     try:
@@ -355,8 +360,63 @@ async def _video_player_callback_impl(client, q: CallbackQuery):
         ACTIVE_PLAYERS.pop(owner_id, None)
         return await q.answer("Player closed")
 
+    # ---------------- SHUFFLE (premium-only) ----------------
+    if action == "shuffle":
+        is_premium = await db.has_premium_access(owner_id)
+        if not is_premium:
+            # Free user → upsell. Show alert + send purchase prompt in chat.
+            await q.answer(
+                "👑 Shuffle is a Premium-only feature.\n"
+                "Upgrade to jump to a random unseen video any time.",
+                show_alert=True,
+            )
+            try:
+                upsell = await client.send_message(
+                    chat_id=session["chat_id"],
+                    text=(
+                        "👑 <b>Premium Shuffle</b>\n\n"
+                        "Tap below to purchase a subscription and unlock:\n"
+                        f"• Up to <b>{PREMIUM_DAILY_LIMIT}</b> videos per day "
+                        f"(vs <b>{VERIFICATION_DAILY_LIMIT}</b> for free users)\n"
+                        "• <b>Shuffle</b> button to instantly skip to any unseen video\n"
+                        "• No verification step"
+                    ),
+                    reply_markup=InlineKeyboardMarkup([[
+                        InlineKeyboardButton(
+                            "• 𝖯𝗎𝗋𝖼𝗁𝖺𝗌𝖾 𝖲𝗎𝖻𝗌𝖼𝗋𝗂𝗉𝗍𝗂𝗈𝗇 •",
+                            callback_data="get",
+                        )
+                    ]]),
+                    reply_to_message_id=session["message_id"],
+                )
+                # Reuse the repo's auto-delete helper to clean the upsell up
+                trigger = session.get("trigger_msg")
+                if trigger:
+                    asyncio.create_task(auto_delete_message(trigger, upsell))
+            except Exception:
+                pass
+            return
+
+        # Premium path: shuffle behaves like Next-from-end (fresh video, counts toward limit)
+        allowed = await _check_limits_for_callback(client, q, session)
+        if not allowed:
+            return
+
+        video_id = await _fetch_new_video(owner_id)
+        if not video_id:
+            return await q.answer(
+                "❌ No more videos available to shuffle.", show_alert=True
+            )
+
+        username = q.from_user.username or q.from_user.first_name or "Unknown"
+        await db.increase_video_count(owner_id, username)
+
+        session["history"].append(video_id)
+        new_index = len(session["history"]) - 1
+        target_video = video_id
+
     # ---------------- BACK ----------------
-    if action == "back":
+    elif action == "back":
         if session["index"] <= 0:
             return await q.answer("This is the first video.", show_alert=False)
         new_index = session["index"] - 1
