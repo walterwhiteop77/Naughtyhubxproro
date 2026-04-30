@@ -40,7 +40,7 @@ async def av_x_verification(client, message):
     await db.create_verify_id(user_id, verify_id, file_id)
     
     # Link Generation
-    long_url = f"https://telegram.me/{temp.U_NAME}?start=avbotz__{user_id}_{verify_id}"
+    long_url = f"https://telegram.me/{temp.U_NAME}?start=avbotz_{user_id}_{verify_id}"
     verify_url = await get_shortlink_av(long_url)
     
     buttons = [[
