@@ -12,12 +12,12 @@ def str_to_bool(val, default=False):
 # =========================================================
 # 🤖 BOT BASIC INFORMATION
 # =========================================================
-API_ID = int(environ.get("API_ID", "20217846"))
-API_HASH = environ.get("API_HASH", "fc2d0079fe53ffadd23fceb32c825285")
+API_ID = int(environ.get("API_ID", "23685822"))
+API_HASH = environ.get("API_HASH", "ff0572e13ff2f63a50f6dc707e0c4c9f")
 BOT_TOKEN = environ.get("BOT_TOKEN", "")
 PORT = int(environ.get("PORT", "8080"))
 TIMEZONE = environ.get("TIMEZONE", "Asia/Kolkata")
-OWNER_USERNAME = environ.get("OWNER_USERNAME", "Uknowme45678")
+OWNER_USERNAME = environ.get("OWNER_USERNAME", "eren645")
 
 # =========================================================
 # 💾 DATABASE CONFIGURATION
@@ -28,7 +28,7 @@ DB_NAME = environ.get("DATABASE_NAME", "Cluster0")
 # =========================================================
 # 📢 CHANNELS & ADMINS
 # =========================================================
-ADMINS = int(environ.get("ADMINS", "7903367518"))
+ADMINS = int(environ.get("ADMINS", "6725874739"))
 
 LOG_CHANNEL = int(environ.get("LOG_CHANNEL", "-1002031127227"))
 PREMIUM_LOGS = int(environ.get("PREMIUM_LOGS", "-1002702898412"))
