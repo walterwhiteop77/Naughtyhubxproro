@@ -29,29 +29,64 @@ counters_col = mydb.counters
 
 
 # ---- categories (configured via env var) ----
-def get_categories() -> list:
-    """Returns the configured category names (excluding the 'All Videos' pseudo-cat)."""
+def _categories_from_env() -> list:
     raw = os.environ.get("CATEGORIES", "Desi,Videsi,Leaked,Snaps")
     return [c.strip() for c in raw.split(",") if c.strip()]
+
+
+def _categories_from_channels() -> list:
+    """
+    Pulls the category names out of the CATEGORY_CHANNELS mapping so users
+    only have to configure the channel mapping; the picker stays in sync
+    automatically.
+
+    Format:  "Desi:-1001234 Videsi:-1005678 Leaked:-1009999"
+    (Entries can be space- or comma-separated.)
+    """
+    raw = os.environ.get("CATEGORY_CHANNELS", "").replace(",", " ")
+    names = []
+    for entry in raw.split():
+        if ":" not in entry:
+            continue
+        name, _ = entry.rsplit(":", 1)
+        name = name.strip()
+        if name:
+            names.append(name)
+    return names
+
+
+def get_categories() -> list:
+    """
+    Returns the configured category names (excluding the 'All Videos'
+    pseudo-cat). Merges CATEGORIES + CATEGORY_CHANNELS so that any
+    category mapped to a channel automatically shows up in the player's
+    'Change Category' picker — no need to keep two env vars in sync.
+    """
+    seen = set()
+    result = []
+    for c in _categories_from_env() + _categories_from_channels():
+        if c and c not in seen:
+            seen.add(c)
+            result.append(c)
+    return result
 
 
 ALL_VIDEOS_LABEL = "All Videos"
 
 
 # ---- bookmark caps (env-configurable) ----
-class PlayerDB:
+def bookmark_limit_free() -> int:
+    try:
+        return int(os.environ.get("BOOKMARK_LIMIT_FREE", "5"))
+    except ValueError:
+        return 5
 
-    def bookmark_limit_free(self) -> int:
-        try:
-            return int(os.environ.get("BOOKMARK_LIMIT_FREE", "5"))
-        except ValueError:
-            return 5
 
-    def bookmark_limit_premium(self) -> int:
-        try:
-            return int(os.environ.get("BOOKMARK_LIMIT_PREMIUM", "15"))
-        except ValueError:
-            return 15
+def bookmark_limit_premium() -> int:
+    try:
+        return int(os.environ.get("BOOKMARK_LIMIT_PREMIUM", "15"))
+    except ValueError:
+        return 15
 
 
 class PlayerDB:
