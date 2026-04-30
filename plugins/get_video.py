@@ -352,13 +352,34 @@ async def handle_video_request(client, m: Message):
     if await ban_manager.check_ban(client, m):
         return
 
-    # If a player is already active, reuse it
+    # If a player is already active, point the user at it by REPLYING
+    # to the active player message itself — tapping the quoted reply
+    # jumps the user straight to the player so they don't have to scroll
+    # back through the chat to find it.
     if user_id in ACTIVE_PLAYERS:
-        notice = await m.reply(
+        existing = ACTIVE_PLAYERS[user_id]
+        notice_text = (
             "🎬 <b>Your video player is still active.</b>\n\n"
-            "Use the <b>⏮ Previous</b> / <b>Next ▶️</b> buttons on it to switch videos."
+            "Tap the quoted message above to jump to it, then use "
+            "<b>⏮ Previous</b> / <b>Next ▶️</b> to switch videos."
         )
-        asyncio.create_task(auto_delete_message(m, notice))
+        notice = None
+        # Try to reply to the player message in its original chat first.
+        try:
+            notice = await client.send_message(
+                chat_id=existing["chat_id"],
+                text=notice_text,
+                reply_to_message_id=existing["message_id"],
+            )
+        except Exception:
+            # Player message may have been deleted out-of-band — fall
+            # back to a plain reply on the user's /getvideo command.
+            try:
+                notice = await m.reply(notice_text)
+            except Exception:
+                notice = None
+        if notice is not None:
+            asyncio.create_task(auto_delete_message(m, notice))
         return
 
     # Limits
