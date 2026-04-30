@@ -256,7 +256,8 @@ class PlayerDB:
 
     async def list_bookmarks(self, user_id, limit: int = 50):
         cursor = bookmarks_col.find({"user_id": user_id}).sort("added_at", -1)
-        return [b["file_id"] async for b in cursor.to_list(length=limit)]
+        docs = await cursor.to_list(length=limit)
+        return [b["file_id"] for b in docs]
 
     # ---------- video selection (with category filter) ----------
     async def get_unseen_video(self, user_id, category=None):
