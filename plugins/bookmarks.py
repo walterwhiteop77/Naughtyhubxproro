@@ -10,14 +10,17 @@ Caps:
   - Free user:    BOOKMARK_LIMIT_FREE     bookmarks (default 5)
   - Premium user: BOOKMARK_LIMIT_PREMIUM  bookmarks (default 15)
 
-Caps are enforced inside the player (the 📑 Bookmark button), and shown
-on the /bookmarks page header.
-
 IMPORTANT: callback_data is hard-capped at 64 bytes by Telegram. We
 therefore use the short numeric Video ID (`video_number`) as the public
 handle inside callbacks, NOT the raw file_id (which is ~70+ chars and
 would silently break the buttons).
+
+NOTE: The cross-plugin import of player helpers from `plugins.get_video`
+is deferred to inside the Play handler so that any startup hiccup in
+get_video can't prevent /bookmarks from listing or removing items.
 """
+
+import traceback
 
 from pyrogram import Client, filters, StopPropagation
 from pyrogram.types import (
@@ -34,15 +37,7 @@ from database.player_db import (
     bookmark_limit_free,
     bookmark_limit_premium,
 )
-from info import PROTECT_CONTENT, FSUB
-from plugins.ban_manager import ban_manager
-from plugins.get_video import (
-    ACTIVE_PLAYERS,
-    _render_caption,
-    _render_keyboard,
-    _schedule_auto_delete,
-)
-from utils import is_user_joined
+from info import PROTECT_CONTENT
 
 
 PAGE_SIZE = 5
@@ -65,7 +60,7 @@ async def _build_page(user_id: int, page: int = 0):
         text = (
             "📑 <b>You have no bookmarks yet.</b>\n\n"
             "Open <b>/getvideo</b> and tap <b>📑 Bookmark</b> on any "
-            "video in the player to save it here for unlimited replays.\n\n"
+            "video in the player to save it here.\n\n"
             f"<i>Slots: 0 / {cap}</i>"
         )
         return text, None, 0, 0
@@ -121,23 +116,31 @@ async def _build_page(user_id: int, page: int = 0):
 
 
 # ======================================================================
-# /bookmarks
+# /bookmarks  (also: /mybookmarks, /saved aliases for discoverability)
 # ======================================================================
-@Client.on_message(filters.command("bookmarks"))
+@Client.on_message(filters.command(["bookmarks", "mybookmarks", "saved"]))
 async def bookmarks_cmd(client, m: Message):
+    # Loud debug so the user can see in logs whether the handler is reached
+    try:
+        uid = m.from_user.id if m.from_user else "?"
+        print(f"[bookmarks] /bookmarks called by user {uid}")
+    except Exception:
+        pass
+
     if not m.from_user:
         return
 
-    if FSUB and not await is_user_joined(client, m):
-        return
-
-    if await ban_manager.check_ban(client, m):
-        return
-
-    text, kb, _, _ = await _build_page(m.from_user.id, 0)
-    if kb is None:
-        return await m.reply(text, disable_web_page_preview=True)
-    await m.reply(text, reply_markup=kb, disable_web_page_preview=True)
+    try:
+        text, kb, _, _ = await _build_page(m.from_user.id, 0)
+        if kb is None:
+            return await m.reply(text, disable_web_page_preview=True)
+        await m.reply(text, reply_markup=kb, disable_web_page_preview=True)
+    except Exception as e:
+        traceback.print_exc()
+        try:
+            await m.reply(f"❌ /bookmarks failed: <code>{e}</code>")
+        except Exception:
+            pass
 
 
 # ======================================================================
@@ -152,6 +155,7 @@ async def bookmark_callback(client, q: CallbackQuery):
     except StopPropagation:
         raise
     except Exception as e:
+        traceback.print_exc()
         try:
             await q.answer(f"Error: {e}", show_alert=True)
         except Exception:
@@ -224,6 +228,21 @@ async def _bookmark_callback_impl(client, q: CallbackQuery):
                 "This video is no longer available.", show_alert=True
             )
 
+        # Lazy import so any issue in get_video.py can't prevent the
+        # /bookmarks command itself from working.
+        try:
+            from plugins.get_video import (
+                ACTIVE_PLAYERS,
+                _render_caption,
+                _render_keyboard,
+                _schedule_auto_delete,
+            )
+        except Exception as e:
+            traceback.print_exc()
+            return await q.answer(
+                f"Player unavailable: {e}", show_alert=True
+            )
+
         # Tear down any existing player so we have a single active one
         existing = ACTIVE_PLAYERS.get(owner_id)
         if existing:
@@ -274,4 +293,5 @@ async def _bookmark_callback_impl(client, q: CallbackQuery):
             _schedule_auto_delete(owner_id, q.message.chat.id, sent.id)
             return await q.answer("▶️ Playing")
         except Exception as e:
+            traceback.print_exc()
             return await q.answer(f"Failed to play: {e}", show_alert=True)
