@@ -278,11 +278,21 @@ async def _check_limits_for_callback(client, q: CallbackQuery, session: dict) ->
 
     if used >= DAILY_LIMIT:
         if IS_VERIFY:
-            await q.answer("Verification required to continue.")
-            trigger = session.get("trigger_msg") or q.message
-            verified = await av_x_verification(client, trigger)
-            if not verified:
-                return False
+            # Only nag the user if they are NOT already verified. A user who
+            # has verified during this verification window can continue
+            # silently; previously we popped the toast before checking and
+            # it fired on every Next click.
+            already_verified = False
+            try:
+                already_verified = await db.is_user_verified(user_id)
+            except Exception:
+                already_verified = False
+            if not already_verified:
+                await q.answer("Verification required to continue.")
+                trigger = session.get("trigger_msg") or q.message
+                verified = await av_x_verification(client, trigger)
+                if not verified:
+                    return False
         else:
             await q.answer("Daily limit reached. Try again tomorrow.", show_alert=True)
             return False
