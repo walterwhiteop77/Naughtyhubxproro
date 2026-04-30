@@ -87,4 +87,4 @@ NO_IMG = environ.get("NO_IMG", "https://i.ibb.co/5xc7m3cd/x.jpg")
 # =========================================================
 # 🌐 WEB APP
 # =========================================================
-WEB_APP_URL = environ.get("WEB_APP_URL", "https://poii.onrender.com")
+WEB_APP_URL = environ.get("WEB_APP_URL", "https://civilian-harriot-filmyflixhd-12852492.koyeb.app/")
