@@ -243,7 +243,11 @@ async def _bookmark_callback_impl(client, q: CallbackQuery):
                 f"Player unavailable: {e}", show_alert=True
             )
 
-        # Tear down any existing player so we have a single active one
+        # Tear down any existing player so we have a single active one.
+        # IMPORTANT: do NOT delete the previous trigger_msg — when the user
+        # is paging through their bookmarks, the previous trigger_msg IS the
+        # bookmarks list itself, and we want it to stay open so they can
+        # pick the next saved video.
         existing = ACTIVE_PLAYERS.get(owner_id)
         if existing:
             task = existing.get("delete_task")
@@ -258,18 +262,31 @@ async def _bookmark_callback_impl(client, q: CallbackQuery):
                         await client.delete_messages(existing["chat_id"], mid)
                     except Exception:
                         pass
-            try:
-                if existing.get("trigger_msg"):
-                    await existing["trigger_msg"].delete()
-            except Exception:
-                pass
             ACTIVE_PLAYERS.pop(owner_id, None)
 
-        # Send a fresh player at this video (replays are FREE — no count++)
+        # Snapshot the user's full bookmark list so Next/Back navigate
+        # ONLY within saved videos when launched from /bookmarks.
+        bookmark_list = await player_db.list_bookmarks(owner_id, limit=200)
+        try:
+            bookmark_pos = bookmark_list.index(file_id)
+        except ValueError:
+            # The video isn't in the list anymore (race) — fall back to a
+            # one-item list so Next/Back show the friendly end-of-list alert.
+            bookmark_list = [file_id]
+            bookmark_pos = 0
+
+        # Send a fresh player at this video (replays are FREE — no count++).
+        # Initial keyboard shows the user's position within their bookmark
+        # list (e.g. "🎬 3/12") rather than the trivial "1/1" of a brand
+        # new replay history.
         try:
             caption = await _render_caption(file_id)
             kb = await _render_keyboard(
-                owner_id, file_id, index=0, history_len=1, category=None
+                owner_id,
+                file_id,
+                index=bookmark_pos,
+                history_len=max(len(bookmark_list), 1),
+                category=None,
             )
             sent = await client.send_video(
                 chat_id=q.message.chat.id,
@@ -283,15 +300,23 @@ async def _bookmark_callback_impl(client, q: CallbackQuery):
                 "client": client,
                 "chat_id": q.message.chat.id,
                 "message_id": sent.id,
-                "trigger_msg": q.message,
+                # No trigger_msg: we don't want the player's auto-delete or
+                # Close button to ever delete the bookmarks list.
+                "trigger_msg": None,
                 "history": [file_id],
                 "index": 0,
                 "category": None,
                 "cat_menu_msg_id": None,
                 "delete_task": None,
+                # Bookmark-mode navigation context
+                "bookmark_mode": True,
+                "bookmark_list": bookmark_list,
+                "bookmark_pos": bookmark_pos,
             }
             _schedule_auto_delete(owner_id, q.message.chat.id, sent.id)
-            return await q.answer("▶️ Playing")
+            return await q.answer(
+                f"▶️ Playing  ({bookmark_pos + 1}/{len(bookmark_list)})"
+            )
         except Exception as e:
             traceback.print_exc()
             return await q.answer(f"Failed to play: {e}", show_alert=True)

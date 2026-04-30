@@ -633,6 +633,24 @@ async def _video_player_callback_impl(client, q: CallbackQuery):
 
     # ---------------- BACK ----------------
     if action == "back":
+        # Bookmark-mode: walk only saved videos (replays are free).
+        if session.get("bookmark_mode"):
+            bm_list = session.get("bookmark_list") or []
+            bm_pos = session.get("bookmark_pos", 0)
+            if bm_pos <= 0:
+                return await q.answer(
+                    "📑 This is your first bookmark.", show_alert=True
+                )
+            bm_pos -= 1
+            session["bookmark_pos"] = bm_pos
+            target = bm_list[bm_pos]
+            session["history"].append(target)
+            session["index"] = len(session["history"]) - 1
+            await _refresh_player(client, session, target)
+            return await q.answer(
+                f"📑 Bookmark {bm_pos + 1}/{len(bm_list)}"
+            )
+
         if session["index"] <= 0:
             return await q.answer("This is the first video.")
         session["index"] -= 1
@@ -642,6 +660,25 @@ async def _video_player_callback_impl(client, q: CallbackQuery):
 
     # ---------------- NEXT ----------------
     if action == "next":
+        # Bookmark-mode: walk only saved videos (replays are free, so we
+        # also skip the daily-limit check and the count++).
+        if session.get("bookmark_mode"):
+            bm_list = session.get("bookmark_list") or []
+            bm_pos = session.get("bookmark_pos", 0)
+            if bm_pos + 1 >= len(bm_list):
+                return await q.answer(
+                    "📑 That was your last bookmark.", show_alert=True
+                )
+            bm_pos += 1
+            session["bookmark_pos"] = bm_pos
+            target = bm_list[bm_pos]
+            session["history"].append(target)
+            session["index"] = len(session["history"]) - 1
+            await _refresh_player(client, session, target)
+            return await q.answer(
+                f"📑 Bookmark {bm_pos + 1}/{len(bm_list)}"
+            )
+
         if session["index"] < len(session["history"]) - 1:
             session["index"] += 1
             target = session["history"][session["index"]]
@@ -677,11 +714,21 @@ async def _refresh_player(client, session: dict, file_id: str):
     if owner_id is None:
         return
     caption = await _render_caption(file_id)
+    # In bookmark mode, the player's position indicator and Previous-button
+    # state should reflect the user's saved-video list, not the replay
+    # history of the current session.
+    if session.get("bookmark_mode"):
+        bm_list = session.get("bookmark_list") or []
+        kb_index = session.get("bookmark_pos", 0)
+        kb_total = max(len(bm_list), 1)
+    else:
+        kb_index = session["index"]
+        kb_total = len(session["history"])
     keyboard = await _render_keyboard(
         owner_id,
         file_id,
-        index=session["index"],
-        history_len=len(session["history"]),
+        index=kb_index,
+        history_len=kb_total,
         category=session.get("category"),
     )
     try:
