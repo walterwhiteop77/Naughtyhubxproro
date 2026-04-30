@@ -28,7 +28,12 @@ from pyrogram.types import (
 )
 
 from database.users_db import db
-from database.player_db import player_db, ALL_VIDEOS_LABEL
+from database.player_db import (
+    player_db,
+    ALL_VIDEOS_LABEL,
+    bookmark_limit_free,
+    bookmark_limit_premium,
+)
 from info import PROTECT_CONTENT, FSUB
 from plugins.ban_manager import ban_manager
 from plugins.get_video import (
@@ -52,8 +57,8 @@ async def _build_page(user_id: int, page: int = 0):
 
     is_premium = await db.has_premium_access(user_id)
     cap = (
-        player_db.bookmark_limit_premium() if is_premium
-        else player_db.bookmark_limit_free()
+        bookmark_limit_premium() if is_premium
+        else bookmark_limit_free()
     )
 
     if total == 0:

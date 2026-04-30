@@ -27,7 +27,13 @@ from pyrogram.types import (
 import asyncio
 
 from database.users_db import db
-from database.player_db import player_db, get_categories, ALL_VIDEOS_LABEL
+from database.player_db import (
+    player_db,
+    get_categories,
+    ALL_VIDEOS_LABEL,
+    bookmark_limit_free,
+    bookmark_limit_premium,
+)
 from info import (
     PROTECT_CONTENT,
     DAILY_LIMIT,
@@ -486,8 +492,8 @@ async def _video_player_callback_impl(client, q: CallbackQuery):
     if action == "bookmark":
         is_premium = await db.has_premium_access(owner_id)
         cap = (
-            player_db.bookmark_limit_premium() if is_premium
-            else player_db.bookmark_limit_free()
+            bookmark_limit_premium() if is_premium
+            else bookmark_limit_free()
         )
         result = await player_db.try_toggle_bookmark(
             owner_id, current_file_id, max_count=cap
@@ -510,7 +516,7 @@ async def _video_player_callback_impl(client, q: CallbackQuery):
                 await q.answer(
                     f"📑 Free users can save up to {cap} bookmarks.\n"
                     f"Upgrade to Premium for "
-                    f"{player_db.bookmark_limit_premium()} slots.",
+                    f"{bookmark_limit_premium()} slots.",
                     show_alert=True,
                 )
                 await _send_premium_upsell(client, q, session, "More Bookmarks")

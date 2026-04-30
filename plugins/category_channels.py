@@ -30,7 +30,7 @@ import os
 from pyrogram import Client, filters
 from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
 
-from info import POST_CHANNEL, POST_SHORTLINK, SEND_POST, NO_IMG
+from info import POST_CHANNEL, POST_SHORTLINK, SEND_POST, NO_IMG, ADMINS
 from database.users_db import db
 from database.player_db import player_db
 from utils import temp, get_shortlink, generate_weird_name, generate_thumbnail
@@ -47,11 +47,56 @@ def _parse_channels() -> dict:
         try:
             mapping[int(cid)] = name.strip()
         except ValueError:
+            print(f"⚠️  CATEGORY_CHANNELS: bad channel id in '{entry}' — skipped")
             continue
     return mapping
 
 
 CATEGORY_CHANNEL_MAP = _parse_channels()
+
+
+# ---- Startup diagnostics ----
+print("━" * 50)
+if CATEGORY_CHANNEL_MAP:
+    print(f"📂 CATEGORY_CHANNELS loaded ({len(CATEGORY_CHANNEL_MAP)} channels):")
+    for cid, name in CATEGORY_CHANNEL_MAP.items():
+        print(f"     {name:<20}  →  {cid}")
+else:
+    print(
+        "📂 CATEGORY_CHANNELS env var is EMPTY or MISSING — per-category\n"
+        "   auto-indexing is DISABLED. Set it like:\n"
+        '     CATEGORY_CHANNELS="Desi:-1001234 Videsi:-1005678"\n'
+        "   …with the FULL -100… channel id, then restart the bot."
+    )
+print("━" * 50)
+
+
+# ---- /catchannels — quick admin diagnostic at runtime ----
+def _is_admin(uid):
+    if isinstance(ADMINS, (list, tuple, set)):
+        return uid in ADMINS
+    return uid == ADMINS
+
+
+@Client.on_message(filters.command("catchannels") & filters.private)
+async def catchannels_cmd(_, m: Message):
+    if not m.from_user or not _is_admin(m.from_user.id):
+        return
+    if not CATEGORY_CHANNEL_MAP:
+        return await m.reply(
+            "📂 <b>No category channels configured.</b>\n\n"
+            "Set the env var, e.g.:\n"
+            "<code>CATEGORY_CHANNELS=\"Desi:-1001234 Videsi:-1005678\"</code>\n"
+            "and restart the bot."
+        )
+    lines = ["📂 <b>Category channels:</b>"]
+    for cid, name in CATEGORY_CHANNEL_MAP.items():
+        lines.append(f"• <b>{name}</b> → <code>{cid}</code>")
+    lines.append(
+        "\nMake sure the bot is an <b>admin</b> in each of these channels "
+        "with permission to read posts, otherwise videos won't be indexed."
+    )
+    await m.reply("\n".join(lines))
 
 
 # Only register the handler if the user actually configured channels.
