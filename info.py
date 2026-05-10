@@ -28,6 +28,7 @@ DB_NAME = environ.get("DATABASE_NAME", "Cluster0")
 # =========================================================
 # 📢 CHANNELS & ADMINS
 # =========================================================
+OWNER_ID = int(environ.get("OWNER_ID", environ.get("ADMINS", "6725874739")))
 ADMINS = int(environ.get("ADMINS", "6725874739"))
 
 LOG_CHANNEL = int(environ.get("LOG_CHANNEL", "-1003719289913"))
