@@ -70,6 +70,12 @@ POST_SHORTLINK_API = environ.get("POST_SHORTLINK_API", "f9da968c27a8594f2bbc3b2c
 VERIFY_EXPIRE = int(environ.get("VERIFY_EXPIRE", "3600"))
 TUTORIAL_LINK = environ.get("TUTORIAL_LINK", "https://t.me/tutorial_filx/7")
 
+# File store token verification expiry (seconds)
+FS_VERIFY_EXPIRE = int(environ.get("FS_VERIFY_EXPIRE", "86400"))
+
+# Force-sub invite link expiry (seconds, 0 = no expiry)
+FSUB_LINK_EXPIRY = int(environ.get("FSUB_LINK_EXPIRY", "0"))
+
 # =========================================================
 # 💳 PAYMENT SETTINGS
 # =========================================================
@@ -84,7 +90,16 @@ AUTH_PICS = environ.get("AUTH_PICS", "https://i.ibb.co/rfNnbhV9/x.jpg")
 VERIFY_IMG = environ.get("VERIFY_IMG", "https://i.ibb.co/1JbhhN74/x.jpg")
 NO_IMG = environ.get("NO_IMG", "https://i.ibb.co/5xc7m3cd/x.jpg")
 
+
 # =========================================================
+# FILE STORE
+# =========================================================
+# Custom caption for files sent from the store (optional)
+# Supports {previouscaption} and {filename} placeholders
+CUSTOM_CAPTION = environ.get("CUSTOM_CAPTION", "@naughtyflicks")
+# =========================================================
+
+
 # 🌐 WEB APP
 # =========================================================
 WEB_APP_URL = environ.get("WEB_APP_URL", "https://civilian-harriot-filmyflixhd-12852492.koyeb.app/")
