@@ -338,94 +338,103 @@ async def _send_premium_upsell(client, q: CallbackQuery, session: dict, feature:
 # ======================================================================
 # /getvideo  OR  "get video"
 # ======================================================================
-@Client.on_message(filters.command("getvideo") | filters.regex(r"(?i)get video"))
+@Client.on_message(
+    (filters.command("getvideo") | filters.regex(r"(?i)get video")) & filters.private,
+    group=-1,
+)
 async def handle_video_request(client, m: Message):
-    if not m.from_user:
-        return
-
-    if FSUB and not await is_user_joined(client, m):
-        return
-
-    user_id = m.from_user.id
-    username = m.from_user.username or m.from_user.first_name or "Unknown"
-
-    if await ban_manager.check_ban(client, m):
-        return
-
-    # If a player is already active, point the user at it by REPLYING
-    # to the active player message itself — tapping the quoted reply
-    # jumps the user straight to the player so they don't have to scroll
-    # back through the chat to find it.
-    if user_id in ACTIVE_PLAYERS:
-        existing = ACTIVE_PLAYERS[user_id]
-        notice_text = (
-            "🎬 <b>Your video player is still active.</b>\n\n"
-            "Tap the quoted message above to jump to it, then use "
-            "<b>⏮ Previous</b> / <b>Next ▶️</b> to switch videos."
-        )
-        notice = None
-        # Try to reply to the player message in its original chat first.
-        try:
-            notice = await client.send_message(
-                chat_id=existing["chat_id"],
-                text=notice_text,
-                reply_to_message_id=existing["message_id"],
-            )
-        except Exception:
-            # Player message may have been deleted out-of-band — fall
-            # back to a plain reply on the user's /getvideo command.
-            try:
-                notice = await m.reply(notice_text)
-            except Exception:
-                notice = None
-        if notice is not None:
-            asyncio.create_task(auto_delete_message(m, notice))
-        return
-
-    # Limits
-    if not await _check_limits_for_message(client, m, user_id):
-        return
-
-    # Make sure indexes exist for the new collections
-    await player_db.ensure_indexes()
-
-    # Initial fetch (no category filter)
-    video_id = await _fetch_new_video(user_id, category=None)
-    if not video_id:
-        return await m.reply("❌ No videos found in the database.")
-
     try:
-        caption = await _render_caption(video_id)
-        keyboard = await _render_keyboard(
-            user_id, video_id, index=0, history_len=1, category=None
-        )
+        if not m.from_user:
+            return
 
-        sent = await client.send_video(
-            chat_id=m.chat.id,
-            video=video_id,
-            protect_content=PROTECT_CONTENT,
-            caption=caption,
-            reply_to_message_id=m.id,
-            reply_markup=keyboard,
-        )
+        if FSUB and not await is_user_joined(client, m):
+            return
 
-        await db.increase_video_count(user_id, username)
+        user_id = m.from_user.id
+        username = m.from_user.username or m.from_user.first_name or "Unknown"
 
-        ACTIVE_PLAYERS[user_id] = {
-            "client": client,
-            "chat_id": m.chat.id,
-            "message_id": sent.id,
-            "trigger_msg": m,
-            "history": [video_id],
-            "index": 0,
-            "category": None,
-            "cat_menu_msg_id": None,
-            "delete_task": None,
-        }
-        _schedule_auto_delete(user_id, m.chat.id, sent.id)
+        if await ban_manager.check_ban(client, m):
+            return
 
+        # If a player is already active, point the user at it by REPLYING
+        # to the active player message itself — tapping the quoted reply
+        # jumps the user straight to the player so they don't have to scroll
+        # back through the chat to find it.
+        if user_id in ACTIVE_PLAYERS:
+            existing = ACTIVE_PLAYERS[user_id]
+            notice_text = (
+                "🎬 <b>Your video player is still active.</b>\n\n"
+                "Tap the quoted message above to jump to it, then use "
+                "<b>⏮ Previous</b> / <b>Next ▶️</b> to switch videos."
+            )
+            notice = None
+            try:
+                notice = await client.send_message(
+                    chat_id=existing["chat_id"],
+                    text=notice_text,
+                    reply_to_message_id=existing["message_id"],
+                )
+            except Exception:
+                try:
+                    notice = await m.reply(notice_text)
+                except Exception:
+                    notice = None
+            if notice is not None:
+                asyncio.create_task(auto_delete_message(m, notice))
+            return
+
+        # Limits
+        if not await _check_limits_for_message(client, m, user_id):
+            return
+
+        # Make sure indexes exist for the new collections
+        await player_db.ensure_indexes()
+
+        # Initial fetch (no category filter)
+        video_id = await _fetch_new_video(user_id, category=None)
+        if not video_id:
+            await m.reply("❌ No videos found in the database.")
+            return
+
+        try:
+            caption = await _render_caption(video_id)
+            keyboard = await _render_keyboard(
+                user_id, video_id, index=0, history_len=1, category=None
+            )
+
+            sent = await client.send_video(
+                chat_id=m.chat.id,
+                video=video_id,
+                protect_content=PROTECT_CONTENT,
+                caption=caption,
+                reply_to_message_id=m.id,
+                reply_markup=keyboard,
+            )
+
+            await db.increase_video_count(user_id, username)
+
+            ACTIVE_PLAYERS[user_id] = {
+                "client": client,
+                "chat_id": m.chat.id,
+                "message_id": sent.id,
+                "trigger_msg": m,
+                "history": [video_id],
+                "index": 0,
+                "category": None,
+                "cat_menu_msg_id": None,
+                "delete_task": None,
+            }
+            _schedule_auto_delete(user_id, m.chat.id, sent.id)
+
+        except Exception as e:
+            await m.reply(f"❌ Failed to send video: {str(e)}")
+
+    except StopPropagation:
+        raise
     except Exception as e:
-        await m.reply(f"❌ Failed to send video: {str(e)}")
+        print(f"[GetVideo Error] {e}")
+    finally:
+        raise StopPropagation
 
 
 # ======================================================================

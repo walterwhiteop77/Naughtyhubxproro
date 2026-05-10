@@ -52,7 +52,10 @@ async def premium_user(client, message):
 # -------------------------------------------------------------------------
 # 🛍️ BUY COMMAND (Shows Plan & QR Code)
 # -------------------------------------------------------------------------
-@Client.on_message(filters.command("buy") | filters.regex(r"(?i)Subscription"))
+@Client.on_message(
+    (filters.command("buy") | filters.regex(r"(?i)Subscription")) & filters.private,
+    group=-1,
+)
 async def buy_handler(client, message: Message):
     user_id = message.from_user.id
     username = message.from_user.first_name
@@ -163,7 +166,10 @@ async def reject_payment(client, callback_query: CallbackQuery):
 # -------------------------------------------------------------------------
 # 👤 MY PLAN COMMAND
 # -------------------------------------------------------------------------
-@Client.on_message((filters.command("myplan") | filters.regex(r"(?i)^my\s?plan$")) & filters.private)
+@Client.on_message(
+    (filters.command("myplan") | filters.regex(r"(?i)^my\s?plan$")) & filters.private,
+    group=-1,
+)
 async def myplan_handler(_, m: Message):
     user_id = m.from_user.id
     username = m.from_user.first_name
