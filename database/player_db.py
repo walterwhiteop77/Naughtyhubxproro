@@ -264,21 +264,56 @@ class PlayerDB:
         seen_doc = await historys_col.find_one({"user_id": user_id})
         seen_ids = seen_doc.get("seen", []) if seen_doc else []
 
-        query = {"file_id": {"$nin": seen_ids}}
+        # Build base query (category only, no seen filter yet)
+        base_query = {}
         if category:
-            query["category"] = category
+            base_query["category"] = category
 
-        cursor = videos_col.find(query, {"file_id": 1}).limit(500)
-        results = await cursor.to_list(length=500)
+        total = await videos_col.count_documents(base_query)
+        if total == 0:
+            return None
+
+        # Reset history once the user has seen >= 80% of the collection
+        if len(seen_ids) >= max(1, int(total * 0.8)):
+            await historys_col.delete_one({"user_id": user_id})
+            seen_ids = []
+
+        # Build unseen query
+        unseen_query = dict(base_query)
+        if seen_ids:
+            unseen_query["file_id"] = {"$nin": seen_ids}
+
+        unseen_count = await videos_col.count_documents(unseen_query)
+
+        # If nothing unseen left, fall back to the full pool
+        if unseen_count == 0:
+            unseen_query = base_query
+            unseen_count = total
+
+        # ── True uniform random selection ──────────────────────────────
+        # Pick a random position inside the eligible set, then fetch 1
+        # document at that position. This guarantees every video in the
+        # entire collection (all 3000+) has an equal probability of being
+        # chosen, regardless of insertion order.
+        skip = random.randint(0, unseen_count - 1)
+        cursor = videos_col.find(unseen_query, {"file_id": 1}).skip(skip).limit(1)
+        results = await cursor.to_list(length=1)
+
+        # Edge case: concurrent deletion made skip out of range — take first
+        if not results:
+            cursor = videos_col.find(unseen_query, {"file_id": 1}).limit(1)
+            results = await cursor.to_list(length=1)
+
         if not results:
             return None
-        v = random.choice(results)
+
+        file_id = results[0]["file_id"]
         await historys_col.update_one(
             {"user_id": user_id},
-            {"$addToSet": {"seen": v["file_id"]}},
+            {"$addToSet": {"seen": file_id}},
             upsert=True,
         )
-        return v["file_id"]
+        return file_id
 
     async def get_random_video(self, category=None):
         try:
