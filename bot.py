@@ -1,11 +1,12 @@
 import os
 from pyrogram import Client
-from info import API_ID, API_HASH, BOT_TOKEN, LOG_CHANNEL, PORT, ADMINS
+from info import API_ID, API_HASH, BOT_TOKEN, LOG_CHANNEL, PORT, ADMINS, DB_CHANNEL
 from aiohttp import web
-from route import web_server, ping_server, check_expired_premium, start_scheduler 
+from route import web_server, ping_server, check_expired_premium, start_scheduler
 import pytz
 from datetime import date, datetime
-from utils import temp 
+from utils import temp
+
 
 class Bot(Client):
     def __init__(self):
@@ -27,35 +28,42 @@ class Bot(Client):
         temp.U_NAME = me.username
         temp.B_NAME = me.first_name
         temp.B_LINK = me.mention
-        self.username = '@' + me.username
+        self.username = "@" + me.username
 
-        # ----------------- PLUGINS PRINTING LOGIC -----------------
+        # --- Set up DB channel for File Store ---
+        if DB_CHANNEL:
+            try:
+                self.db_channel = await self.get_chat(DB_CHANNEL)
+                print(f"✅ DB Channel Connected: {self.db_channel.title} [{self.db_channel.id}]")
+            except Exception as e:
+                print(f"⚠️  Could not connect to DB_CHANNEL ({DB_CHANNEL}): {e}")
+                self.db_channel = None
+        else:
+            self.db_channel = None
+            print("⚠️  DB_CHANNEL not set. File Store features disabled.")
+
+        # --- Print loaded plugins ---
         print("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
         print("🛠  LOADING PLUGINS...")
-        
         plugin_count = 0
         for root, dirs, files in os.walk("plugins"):
             for file in files:
                 if file.endswith(".py") and not file.startswith("__"):
                     print(f"✅ Successfully Loaded: {file}")
                     plugin_count += 1
-        
         print(f"🎉 Total {plugin_count} Plugins Loaded!")
         print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n")
-        # ----------------------------------------------------------
 
-        tz = pytz.timezone('Asia/Kolkata')
+        tz = pytz.timezone("Asia/Kolkata")
         today = date.today()
         now = datetime.now(tz)
-        time = now.strftime("%H:%M:%S %p")
-        
-        # --- BACKGROUND TASKS ---
+        time_str = now.strftime("%H:%M:%S %p")
+
+        # --- Background tasks ---
         self.loop.create_task(check_expired_premium(self))
         self.loop.create_task(start_scheduler(self))
-        
-        # ✅ FIX: Removed 'self' from ping_server()
-        self.loop.create_task(ping_server()) 
-        
+        self.loop.create_task(ping_server())
+
         app_instance = await web_server()
         app_runner = web.AppRunner(app_instance)
         await app_runner.setup()
@@ -63,38 +71,38 @@ class Bot(Client):
         await site.start()
 
         print(f"{me.first_name} 𝚂𝚃𝙰𝚁𝚃𝙴𝙳 ⚡️⚡️⚡️")
-  
-        # ✅ ADMINS MESSAGE
+
+        # Notify admins
         if isinstance(ADMINS, list):
             for admin in ADMINS:
                 try:
                     await self.send_message(admin, f"**__{me.first_name} Iꜱ Sᴛᴀʀᴛᴇᴅ.....✨️😅😅😅__**")
-                except:
+                except Exception:
                     pass
         else:
             try:
                 await self.send_message(ADMINS, f"**__{me.first_name} Iꜱ Sᴛᴀʀᴛᴇᴅ.....✨️😅😅😅__**")
-            except:
+            except Exception:
                 pass
-        
-        # ✅ LOG CHANNEL MESSAGE
+
+        # Log channel message
         try:
             await self.send_message(
                 LOG_CHANNEL,
                 text=(
                     f"<b>ʀᴇsᴛᴀʀᴛᴇᴅ 🤖\n\n"
                     f"📆 ᴅᴀᴛᴇ - <code>{today}</code>\n"
-                    f"🕙 ᴛɪᴍᴇ - <code>{time}</code>\n"
+                    f"🕙 ᴛɪᴍᴇ - <code>{time_str}</code>\n"
                     f"🌍 ᴛɪᴍᴇ ᴢᴏɴᴇ - <code>Asia/Kolkata</code></b>"
-                )
+                ),
             )
-        except:
+        except Exception:
             pass
 
     async def stop(self, *args):
         await super().stop()
         print("Bot Stopped")
 
+
 if __name__ == "__main__":
     Bot().run()
-    
