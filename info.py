@@ -38,6 +38,8 @@ POST_CHANNEL = int(environ.get("POST_CHANNEL", "-1003871870272"))
 VIDEO_CHANNEL = int(environ.get("VIDEO_CHANNEL", "-1003828231424"))
 BRAZZER_CHANNEL = int(environ.get("BRAZZER_CHANNEL", "-1003782456217"))
 
+# DB Channel for File Store (files are copied here and links generated)
+DB_CHANNEL = int(environ.get("DB_CHANNEL", "-1001726493524"))
 
 # Auth channels list
 auth_channel_str = environ.get("AUTH_CHANNEL", "-1001610198839")
