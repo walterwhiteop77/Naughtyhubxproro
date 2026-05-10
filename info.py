@@ -47,13 +47,15 @@ auth_channel_str = environ.get("AUTH_CHANNEL", "-1001610198839")
 AUTH_CHANNEL = [int(x) for x in auth_channel_str.split() if x.strip().lstrip("-").isdigit()]
 
 # =========================================================
-# ⚙️ FEATURES & TOGGLES  (FIXED)
+# FEATURES & TOGGLES
 # =========================================================
 FSUB = str_to_bool(environ.get("FSUB"), True)
 IS_VERIFY = str_to_bool(environ.get("IS_VERIFY"), True)
 POST_SHORTLINK = str_to_bool(environ.get("POST_SHORTLINK"), True)
 SEND_POST = str_to_bool(environ.get("SEND_POST"), False)
 PROTECT_CONTENT = str_to_bool(environ.get("PROTECT_CONTENT"), True)
+DISABLE_CHANNEL_BUTTON = str_to_bool(environ.get("DISABLE_CHANNEL_BUTTON"), False)
+
 
 # =========================================================
 # 🔢 LIMITS
@@ -63,6 +65,7 @@ VERIFICATION_DAILY_LIMIT = int(environ.get("VERIFICATION_DAILY_LIMIT", "700"))
 PREMIUM_DAILY_LIMIT = int(environ.get("PREMIUM_DAILY_LIMIT", "50050"))
 BOOKMARK_LIMIT_FREE = int(environ.get("BOOKMARK_LIMIT_FREE", "5"))
 BOOKMARK_LIMIT_PREMIUM =int(environ.get("BOOKMARK_LIMIT_PREMIUM", "15"))
+
 # =========================================================
 # 🔗 SHORTLINK & VERIFICATION
 # =========================================================
