@@ -216,33 +216,46 @@ def get_progress_bar(percent, length=10):
 # =================================================
 # 📢 BROADCAST FUNCTION
 # =================================================
-async def users_broadcast(user_id, message, is_pin):
-    try:
-        m = await message.copy(chat_id=user_id)
-        if is_pin:
-            try:
-                await m.pin(both_sides=True)
-            except Exception:
-                pass 
-        return True, "Success"
-    except FloodWait as e:
-        await asyncio.sleep(e.value)
-        return await users_broadcast(user_id, message, is_pin)
-    except InputUserDeactivated:
-        await db.delete_user(int(user_id))
-        logging.info(f"{user_id} - Removed from Database, since deleted account.")
-        return False, "Deleted"
-    except UserIsBlocked:
-        logging.info(f"{user_id} - Blocked the bot.")
-        await db.delete_user(user_id)
-        return False, "Blocked"
-    except PeerIdInvalid:
-        await db.delete_user(int(user_id))
-        logging.info(f"{user_id} - PeerIdInvalid")
-        return False, "Error"
-    except Exception as e:
-        logging.error(f"Error broadcasting to {user_id}: {e}")
-        return False, "Error"
+async def users_broadcast(user_id, message, is_pin, reply_markup=None):
+    """
+    Send a broadcast message to a single user.
+
+    Args:
+        user_id:      Telegram user ID to send to.
+        message:      The Pyrogram Message object to copy.
+        is_pin:       Whether to pin the sent message.
+        reply_markup: Optional InlineKeyboardMarkup to attach to the sent message.
+                      Replaces any existing reply_markup on the original message.
+    """
+    # Use a loop instead of recursion so FloodWait never causes a stack overflow.
+    while True:
+        try:
+            m = await message.copy(chat_id=user_id, reply_markup=reply_markup)
+            if is_pin:
+                try:
+                    await m.pin(both_sides=True)
+                except Exception:
+                    pass
+            return True, "Success"
+        except FloodWait as e:
+            # Wait out the flood and retry in the same call (no recursion).
+            logger.warning(f"FloodWait: sleeping {e.value}s for user {user_id}")
+            await asyncio.sleep(e.value + 1)
+        except InputUserDeactivated:
+            await db.delete_user(int(user_id))
+            logger.info(f"{user_id} - Removed from DB (deleted account).")
+            return False, "Deleted"
+        except UserIsBlocked:
+            logger.info(f"{user_id} - Blocked the bot.")
+            await db.delete_user(int(user_id))
+            return False, "Blocked"
+        except PeerIdInvalid:
+            await db.delete_user(int(user_id))
+            logger.info(f"{user_id} - PeerIdInvalid.")
+            return False, "Error"
+        except Exception as e:
+            logger.error(f"Broadcast error for {user_id}: {e}")
+            return False, "Error"
         
 # -------------------------- SHORT LINK GENERATOR (Manual) -------------------------- #
 async def get_shortlink(link):
