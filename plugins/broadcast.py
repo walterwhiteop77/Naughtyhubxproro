@@ -3,7 +3,6 @@ from pyrogram.types import (
     InlineKeyboardButton, InlineKeyboardMarkup,
     ReplyKeyboardMarkup, ReplyKeyboardRemove
 )
-from pyrogram.errors import FloodWait, InputUserDeactivated, UserIsBlocked, PeerIdInvalid
 import time
 import asyncio
 import logging
@@ -21,14 +20,15 @@ def parse_inline_buttons(text: str):
 
     Format rules:
       - Each line becomes one row of buttons.
-      - Multiple buttons in the same row are separated by a comma.
-      - Each button is:  Button Label | https://url.com
+      - Multiple buttons on the same row are separated by a comma.
+      - Each button:  Label | https://url
 
     Example:
-      Visit Website | https://example.com
-      Channel | https://t.me/chan , Support | https://t.me/support
+        Visit Website | https://example.com
+        Channel | https://t.me/chan , Support | https://t.me/support
 
-    Returns None if the text is "no" / empty, or raises ValueError on bad format.
+    Returns None for empty / "no" input.
+    Raises ValueError with a clear message on bad format.
     """
     if not text or text.strip().lower() == "no":
         return None
@@ -43,7 +43,7 @@ def parse_inline_buttons(text: str):
             part = part.strip()
             if "|" not in part:
                 raise ValueError(
-                    f"Line {line_no}: missing '|' separator in «{part}»"
+                    f"Line {line_no}: missing '|' between label and URL in «{part}»"
                 )
             label, _, url = part.partition("|")
             label = label.strip()
@@ -68,7 +68,7 @@ async def broadcast_users(bot, message):
     if lock.locked():
         return await message.reply("⚠️ A broadcast is already running. Wait for it to finish.")
 
-    # ── Step 1: Pin? ─────────────────────────────────────────────────────────
+    # ── Step 1: Pin? ──────────────────────────────────────────────────────────
     ask_pin = await message.reply(
         "<b>📌 Do you want to pin this message for all users?</b>",
         reply_markup=ReplyKeyboardMarkup(
@@ -125,12 +125,12 @@ async def broadcast_users(bot, message):
             await ask_btn.delete()
             return await message.reply_text(
                 f"❌ <b>Invalid button format:</b> {e}\n\n"
-                "Broadcast cancelled. Use the correct format and try again."
+                "Broadcast cancelled. Please use the correct format and try again."
             )
 
     await ask_btn.delete()
 
-    # ── Step 3: Start broadcast ───────────────────────────────────────────────
+    # ── Step 3: Broadcast ─────────────────────────────────────────────────────
     b_msg = message.reply_to_message
     total_users = await db.total_users_count()
     cancel_btn = [[InlineKeyboardButton("🚫 CANCEL", callback_data="broadcast_cancel#users")]]
@@ -146,56 +146,68 @@ async def broadcast_users(bot, message):
     )
 
     start_time = time.time()
+    # Fetch users cursor right before the loop
     users = await db.get_all_users()
     done = 0
     success = 0
     failed = 0
 
     async with lock:
-        async for user in users:
-            # Check cancellation flag
-            if temp.USERS_CANCEL:
-                temp.USERS_CANCEL = False
-                time_taken = get_readable_time(time.time() - start_time)
-                await b_sts.edit(
-                    f"❌ <b>Broadcast cancelled!</b>\n"
-                    f"Completed in {time_taken}\n\n"
-                    f"Total Users: <code>{total_users}</code>\n"
-                    f"Completed: <code>{done}</code>\n"
-                    f"Success: <code>{success}</code>",
-                    reply_markup=None,
-                )
-                return
-
-            success_flag, sts = await users_broadcast(
-                int(user["id"]), b_msg, is_pin, reply_markup=reply_markup
-            )
-
-            if sts == "Success":
-                success += 1
-            else:
-                failed += 1
-            done += 1
-
-            # Small proactive delay every 10 sends to avoid Telegram rate limits
-            if done % 10 == 0:
-                await asyncio.sleep(0.05)
-
-            # Update progress every 20 sends
-            if done % 20 == 0:
-                try:
+        try:
+            async for user in users:
+                # ── Cancellation check ────────────────────────────────────────
+                if temp.USERS_CANCEL:
+                    temp.USERS_CANCEL = False
+                    time_taken = get_readable_time(time.time() - start_time)
                     await b_sts.edit(
-                        f"📢 <b>Broadcast in progress...</b>\n\n"
+                        f"❌ <b>Broadcast cancelled!</b>\n"
+                        f"Completed in {time_taken}\n\n"
                         f"Total Users: <code>{total_users}</code>\n"
                         f"Completed: <code>{done}</code>\n"
                         f"Success: <code>{success}</code>",
-                        reply_markup=InlineKeyboardMarkup(cancel_btn),
+                        reply_markup=None,
                     )
-                except Exception:
-                    pass
+                    return
 
-        # Final summary
-        time_taken = get_readable_time(time.time() - start_time)
+                # ── Send to this user (safe — exceptions are caught inside) ──
+                try:
+                    uid = int(user["id"])
+                except (KeyError, TypeError, ValueError) as e:
+                    logger.warning(f"Skipping invalid user record {user}: {e}")
+                    continue
+
+                _, sts = await users_broadcast(uid, b_msg, is_pin, reply_markup=reply_markup)
+
+                if sts == "Success":
+                    success += 1
+                else:
+                    failed += 1
+                done += 1
+
+                # Small proactive throttle every 10 sends
+                if done % 10 == 0:
+                    await asyncio.sleep(0.05)
+
+                # Update progress every 5 sends so even small user-bases show movement
+                if done % 5 == 0:
+                    try:
+                        await b_sts.edit(
+                            f"📢 <b>Broadcast in progress...</b>\n\n"
+                            f"Total Users: <code>{total_users}</code>\n"
+                            f"Completed: <code>{done}</code>\n"
+                            f"Success: <code>{success}</code>",
+                            reply_markup=InlineKeyboardMarkup(cancel_btn),
+                        )
+                    except Exception:
+                        pass
+
+        except Exception as e:
+            # Catch anything unexpected so the final summary always renders
+            logger.error(f"Broadcast loop error: {e}", exc_info=True)
+
+    # ── Final summary (always runs, even after an unexpected loop error) ──────
+    time_taken = get_readable_time(time.time() - start_time)
+    try:
         await b_sts.edit(
             f"✅ <b>Broadcast completed!</b>\n"
             f"Completed in {time_taken}\n\n"
@@ -205,6 +217,8 @@ async def broadcast_users(bot, message):
             f"Failed: <code>{failed}</code>",
             reply_markup=None,
         )
+    except Exception:
+        pass
 
 
 @Client.on_callback_query(filters.regex(r"^broadcast_cancel"))
