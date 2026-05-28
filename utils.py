@@ -227,10 +227,17 @@ async def users_broadcast(user_id, message, is_pin, reply_markup=None):
         reply_markup: Optional InlineKeyboardMarkup to attach to the sent message.
                       Replaces any existing reply_markup on the original message.
     """
+    # Build copy kwargs — only include reply_markup when one is actually provided.
+    # Passing reply_markup=None explicitly can raise TypeError on some message
+    # types (sticker, voice, video_note, etc.) in certain Pyrofork versions.
+    copy_kwargs = {"chat_id": user_id}
+    if reply_markup is not None:
+        copy_kwargs["reply_markup"] = reply_markup
+
     # Use a loop instead of recursion so FloodWait never causes a stack overflow.
     while True:
         try:
-            m = await message.copy(chat_id=user_id, reply_markup=reply_markup)
+            m = await message.copy(**copy_kwargs)
             if is_pin:
                 try:
                     await m.pin(both_sides=True)
