@@ -39,6 +39,10 @@ class Database:
         self.fs_req_users = mydb.fs_req_users     # Join-request tracking
         self.fs_del_timer = mydb.fs_del_timer     # Auto-delete timer setting
         self.fs_verify = mydb.fs_verify           # File-store token verification
+        self.cat_verify = mydb.cat_verify         # Category-change token verification
+        self.fs_settings = mydb.fs_settings       # Shortner & misc toggles (DB-persisted)
+        self.fs_db_channels = mydb.fs_db_channels # Multiple DB channels for file storage
+        self.bot_config = mydb.bot_config         # Admin panel runtime overrides
 
     # ================================================================
     # USERS
@@ -493,6 +497,30 @@ class Database:
     # ================================================================
     # FILE STORE — TOKEN VERIFICATION
     # ================================================================
+    # CATEGORY-CHANGE VERIFICATION
+    # ================================================================
+    _default_cat_verify = {"is_verified": False, "verified_time": 0, "verify_token": ""}
+
+    async def cat_get_verify_status(self, user_id: int) -> dict:
+        doc = await self.cat_verify.find_one({"_id": user_id})
+        if doc:
+            return doc.get("verify_status", dict(self._default_cat_verify))
+        return dict(self._default_cat_verify)
+
+    async def cat_update_verify_status(
+        self, user_id: int, verify_token: str = "", is_verified: bool = False, verified_time: float = 0
+    ):
+        current = await self.cat_get_verify_status(user_id)
+        current["verify_token"] = verify_token
+        current["is_verified"] = is_verified
+        current["verified_time"] = verified_time
+        await self.cat_verify.update_one(
+            {"_id": user_id},
+            {"$set": {"verify_status": current}},
+            upsert=True,
+        )
+
+    # ================================================================
     _default_verify = {"is_verified": False, "verified_time": 0, "verify_token": "", "link": ""}
 
     async def fs_get_verify_status(self, user_id: int):
@@ -514,6 +542,112 @@ class Database:
             {"$set": {"verify_status": current}},
             upsert=True,
         )
+
+    # ================================================================
+    # SHORTNER SETTINGS (DB-persisted toggle / URL / API / tutorial)
+    # ================================================================
+    _shortner_defaults = {
+        "is_enabled": True,
+        "short_url": None,
+        "short_api": None,
+        "tutorial_link": None,
+        "post_short_url": None,
+        "post_short_api": None,
+        "cat_short_url": None,
+        "cat_short_api": None,
+    }
+
+    async def get_shortner_settings(self) -> dict:
+        doc = await self.fs_settings.find_one({"_id": "shortner"})
+        if doc:
+            result = dict(self._shortner_defaults)
+            result.update({k: v for k, v in doc.items() if k != "_id"})
+            return result
+        return dict(self._shortner_defaults)
+
+    async def set_shortner_status(self, enabled: bool):
+        await self.fs_settings.update_one(
+            {"_id": "shortner"},
+            {"$set": {"is_enabled": enabled}},
+            upsert=True,
+        )
+
+    async def update_shortner_setting(self, key: str, value):
+        await self.fs_settings.update_one(
+            {"_id": "shortner"},
+            {"$set": {key: value}},
+            upsert=True,
+        )
+
+    # ================================================================
+    # MULTIPLE DB CHANNELS MANAGEMENT
+    # ================================================================
+    async def add_db_channel(self, channel_id: int, is_primary: bool = False):
+        existing = await self.fs_db_channels.find_one({"_id": channel_id})
+        if existing:
+            return False
+        if is_primary:
+            await self.fs_db_channels.update_many({}, {"$set": {"is_primary": False}})
+        await self.fs_db_channels.insert_one({
+            "_id": channel_id,
+            "is_primary": is_primary,
+            "is_active": True,
+        })
+        return True
+
+    async def remove_db_channel(self, channel_id: int):
+        result = await self.fs_db_channels.delete_one({"_id": channel_id})
+        return result.deleted_count > 0
+
+    async def get_db_channels(self):
+        return await self.fs_db_channels.find().to_list(length=None)
+
+    async def set_primary_db_channel(self, channel_id: int):
+        await self.fs_db_channels.update_many({}, {"$set": {"is_primary": False}})
+        await self.fs_db_channels.update_one(
+            {"_id": channel_id}, {"$set": {"is_primary": True}}, upsert=True
+        )
+
+    async def toggle_db_channel_status(self, channel_id: int):
+        doc = await self.fs_db_channels.find_one({"_id": channel_id})
+        if not doc:
+            return None
+        new_status = not doc.get("is_active", True)
+        await self.fs_db_channels.update_one(
+            {"_id": channel_id}, {"$set": {"is_active": new_status}}
+        )
+        return new_status
+
+    async def get_active_db_channels(self):
+        docs = await self.fs_db_channels.find({"is_active": True}).to_list(length=None)
+        return [doc["_id"] for doc in docs]
+
+    async def get_primary_db_channel(self):
+        doc = await self.fs_db_channels.find_one({"is_primary": True, "is_active": True})
+        return doc["_id"] if doc else None
+
+    # ================================================================
+    # BOT CONFIG — admin panel runtime overrides
+    # ================================================================
+    async def get_bot_config(self, key: str, default=None):
+        doc = await self.bot_config.find_one({"_id": key})
+        return doc.get("value", default) if doc else default
+
+    async def set_bot_config(self, key: str, value):
+        await self.bot_config.update_one(
+            {"_id": key},
+            {"$set": {"value": value}},
+            upsert=True,
+        )
+
+    async def delete_bot_config(self, key: str):
+        await self.bot_config.delete_one({"_id": key})
+
+    async def get_all_bot_config(self) -> dict:
+        result = {}
+        async for doc in self.bot_config.find():
+            result[doc["_id"]] = doc.get("value")
+        return result
 
 
 db = Database()

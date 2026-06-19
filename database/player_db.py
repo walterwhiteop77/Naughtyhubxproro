@@ -5,10 +5,11 @@ This module is **additive**: it does NOT modify your existing
 `database/users_db.py`. It reuses the same MongoDB connection and adds
 new collections for video metadata that the rich player needs:
 
-  - videoz          (existing) — adds `category` and `video_number` fields lazily
-  - video_reactions (new)      — per-user like/dislike per video
-  - bookmarks       (new)      — per-user bookmarks
-  - counters        (new)      — autoincrement source for `video_number`
+  - videoz            (existing) — adds `category` and `video_number` fields lazily
+  - video_reactions   (new)      — per-user like/dislike per video
+  - bookmarks         (new)      — per-user bookmarks
+  - counters          (new)      — autoincrement source for `video_number`
+  - category_channels (new)      — admin-managed category ↔ channel mapping (DB-backed)
 """
 
 import os
@@ -26,22 +27,20 @@ historys_col = mydb.historyz
 reactions_col = mydb.video_reactions
 bookmarks_col = mydb.bookmarks
 counters_col = mydb.counters
+cat_channels_col = mydb.category_channels   # NEW: DB-backed category channel map
 
 
-# ---- categories (configured via env var) ----
+# ---- categories (env-var fallback, kept for backward compat) ----
 def _categories_from_env() -> list:
     raw = os.environ.get("CATEGORIES", "Desi,Videsi,Leaked,Snaps")
     return [c.strip() for c in raw.split(",") if c.strip()]
 
 
-def _categories_from_channels() -> list:
+def _categories_from_channels_env() -> list:
     """
-    Pulls the category names out of the CATEGORY_CHANNELS mapping so users
-    only have to configure the channel mapping; the picker stays in sync
-    automatically.
-
-    Format:  "Desi:-1001234 Videsi:-1005678 Leaked:-1009999"
-    (Entries can be space- or comma-separated.)
+    Pulls category names out of the legacy CATEGORY_CHANNELS env var.
+    Format:  "Desi:-1001234 Videsi:-1005678"
+    Kept as a fallback; DB-backed channels take precedence at runtime.
     """
     raw = os.environ.get("CATEGORY_CHANNELS", "").replace(",", " ")
     names = []
@@ -57,14 +56,13 @@ def _categories_from_channels() -> list:
 
 def get_categories() -> list:
     """
-    Returns the configured category names (excluding the 'All Videos'
-    pseudo-cat). Merges CATEGORIES + CATEGORY_CHANNELS so that any
-    category mapped to a channel automatically shows up in the player's
-    'Change Category' picker — no need to keep two env vars in sync.
+    Sync helper — returns category names from env vars only.
+    Used as a fallback where async is not available.
+    For the full list (including DB channels) use PlayerDB.get_categories_merged().
     """
     seen = set()
     result = []
-    for c in _categories_from_env() + _categories_from_channels():
+    for c in _categories_from_env() + _categories_from_channels_env():
         if c and c not in seen:
             seen.add(c)
             result.append(c)
@@ -101,6 +99,8 @@ class PlayerDB:
             )
             await videos_col.create_index([("category", 1)])
             await videos_col.create_index([("video_number", 1)])
+            await cat_channels_col.create_index([("channel_id", 1)], unique=True)
+            await cat_channels_col.create_index([("name", 1)])
         except Exception:
             pass
 
@@ -147,6 +147,81 @@ class PlayerDB:
             {"file_unique_id": file_unique_id}, {"$set": {"category": category}}
         )
         return result.modified_count
+
+    # ---------- category channel management (DB-backed) ----------
+
+    async def add_cat_channel(self, name: str, channel_id: int) -> bool:
+        """
+        Add or update a category channel.
+        Returns True if newly inserted, False if it already existed (updated).
+        """
+        existing = await cat_channels_col.find_one({"channel_id": channel_id})
+        if existing:
+            await cat_channels_col.update_one(
+                {"channel_id": channel_id}, {"$set": {"name": name}}
+            )
+            return False
+        await cat_channels_col.insert_one({
+            "name": name,
+            "channel_id": channel_id,
+            "added_at": datetime.now(timezone.utc),
+        })
+        return True
+
+    async def get_cat_channels(self) -> list:
+        """Returns list of {name, channel_id} dicts from the DB."""
+        cursor = cat_channels_col.find(
+            {}, {"_id": 0, "name": 1, "channel_id": 1}
+        ).sort("name", 1)
+        return await cursor.to_list(length=200)
+
+    async def get_cat_channel_by_name(self, name: str) -> dict | None:
+        return await cat_channels_col.find_one({"name": name}, {"_id": 0})
+
+    async def get_cat_channel_by_id(self, channel_id: int) -> dict | None:
+        return await cat_channels_col.find_one({"channel_id": channel_id}, {"_id": 0})
+
+    async def remove_cat_channel(self, name: str) -> bool:
+        """Remove a category channel by name. Returns True if deleted."""
+        result = await cat_channels_col.delete_one({"name": name})
+        return result.deleted_count > 0
+
+    async def rename_cat_channel(self, old_name: str, new_name: str) -> int:
+        """
+        Rename a category channel:
+          1. Updates the channel record in category_channels collection.
+          2. Re-tags every video that was tagged with old_name → new_name.
+        Returns the number of videos re-tagged.
+        """
+        await cat_channels_col.update_many(
+            {"name": old_name}, {"$set": {"name": new_name}}
+        )
+        result = await videos_col.update_many(
+            {"category": old_name}, {"$set": {"category": new_name}}
+        )
+        return result.modified_count
+
+    async def get_categories_from_db(self) -> list:
+        """Returns unique category names from the DB-backed category_channels collection."""
+        cursor = cat_channels_col.find({}, {"_id": 0, "name": 1}).sort("name", 1)
+        docs = await cursor.to_list(length=200)
+        return [d["name"] for d in docs if d.get("name")]
+
+    async def get_categories_merged(self) -> list:
+        """
+        Returns all category names — DB channels first, then env-var fallbacks.
+        Deduplicates so no name appears twice.
+        Use this in async contexts (e.g. the player category picker).
+        """
+        seen = set()
+        result = []
+        db_names = await self.get_categories_from_db()
+        env_names = get_categories()
+        for name in db_names + env_names:
+            if name and name not in seen:
+                seen.add(name)
+                result.append(name)
+        return result
 
     # ---------- reactions ----------
     async def get_reaction_stats(self, file_id) -> dict:
@@ -232,7 +307,6 @@ class PlayerDB:
                 "added_at": datetime.now(timezone.utc),
             })
         except Exception:
-            # likely a duplicate-key race — treat as already added
             pass
         return "added"
 
@@ -264,7 +338,6 @@ class PlayerDB:
         seen_doc = await historys_col.find_one({"user_id": user_id})
         seen_ids = seen_doc.get("seen", []) if seen_doc else []
 
-        # Build base query (category only, no seen filter yet)
         base_query = {}
         if category:
             base_query["category"] = category
@@ -273,33 +346,24 @@ class PlayerDB:
         if total == 0:
             return None
 
-        # Reset history once the user has seen >= 80% of the collection
         if len(seen_ids) >= max(1, int(total * 0.8)):
             await historys_col.delete_one({"user_id": user_id})
             seen_ids = []
 
-        # Build unseen query
         unseen_query = dict(base_query)
         if seen_ids:
             unseen_query["file_id"] = {"$nin": seen_ids}
 
         unseen_count = await videos_col.count_documents(unseen_query)
 
-        # If nothing unseen left, fall back to the full pool
         if unseen_count == 0:
             unseen_query = base_query
             unseen_count = total
 
-        # ── True uniform random selection ──────────────────────────────
-        # Pick a random position inside the eligible set, then fetch 1
-        # document at that position. This guarantees every video in the
-        # entire collection (all 3000+) has an equal probability of being
-        # chosen, regardless of insertion order.
         skip = random.randint(0, unseen_count - 1)
         cursor = videos_col.find(unseen_query, {"file_id": 1}).skip(skip).limit(1)
         results = await cursor.to_list(length=1)
 
-        # Edge case: concurrent deletion made skip out of range — take first
         if not results:
             cursor = videos_col.find(unseen_query, {"file_id": 1}).limit(1)
             results = await cursor.to_list(length=1)
