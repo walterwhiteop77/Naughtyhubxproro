@@ -77,7 +77,7 @@ FS_VERIFY_EXPIRE = int(environ.get("FS_VERIFY_EXPIRE", "86400"))
 
 # Category change verification (separate shortlink API from main verify)
 CAT_SHORTLINK_URL = environ.get("CAT_SHORTLINK_URL", "vplink.in")
-CAT_SHORTLINK_API = environ.get("CAT_SHORTLINK_API", "")
+CAT_SHORTLINK_API = environ.get("CAT_SHORTLINK_API", "f9da968c27a8594f2bbc3b2cd1e8778fa756b3a5")
 CAT_VERIFY_EXPIRE = int(environ.get("CAT_VERIFY_EXPIRE", "86400"))  # seconds (default 24 h)
 
 # Force-sub invite link expiry (seconds, 0 = no expiry)
@@ -107,4 +107,4 @@ CUSTOM_CAPTION = environ.get("CUSTOM_CAPTION", "@naughtyflicks")
 # =========================================================
 # WEB APP
 # =========================================================
-WEB_APP_URL = environ.get("WEB_APP_URL", "https://poii.onrender.com")
+WEB_APP_URL = environ.get("WEB_APP_URL", "https://civilian-harriot-filmyflixhd-12852492.koyeb.app/")
