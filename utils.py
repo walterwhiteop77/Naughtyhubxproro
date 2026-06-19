@@ -6,21 +6,25 @@ import aiohttp
 from shortzy import Shortzy  # Ensure pip install shortzy
 import os, uuid, subprocess
 import random, string
-# --- FIX: Added AUTH_CHANNEL, AUTH_PICS to imports ---
-from info import SHORTLINK_API, SHORTLINK_URL, POST_SHORTLINK_API, POST_SHORTLINK_URL, AUTH_CHANNEL, AUTH_PICS
+from datetime import datetime, timedelta
+
+from info import (
+    SHORTLINK_API, SHORTLINK_URL, POST_SHORTLINK_API, POST_SHORTLINK_URL,
+    AUTH_CHANNEL, AUTH_PICS, FSUB, OWNER_ID, FSUB_LINK_EXPIRY,
+)
+from bot_cfg import gcfg
 from database.users_db import db
-from pyrogram.enums import ParseMode
+from pyrogram.enums import ParseMode, ChatMemberStatus
 from Script import script
 
-# --- FIX: Added missing Pyrogram Types & Errors ---
 from pyrogram.types import Message, InlineKeyboardButton, InlineKeyboardMarkup
 from pyrogram.errors import (
-    FloodWait, 
-    InputUserDeactivated, 
-    UserIsBlocked, 
-    PeerIdInvalid, 
-    UserNotParticipant,  # Required for Force Sub
-    ChatAdminRequired    # Required for Force Sub
+    FloodWait,
+    InputUserDeactivated,
+    UserIsBlocked,
+    PeerIdInvalid,
+    UserNotParticipant,
+    ChatAdminRequired,
 )
 
 # Logger Setup
@@ -35,87 +39,155 @@ class temp(object):
     B_LINK = None
     BOT = None
     USERS_CANCEL = False
-    CANCEL = False  
-    START_TIME = 0  
-    CURRENT = 0    
-    SESSIONS = {}   # ✅ ADD THIS
+    CANCEL = False
+    START_TIME = 0
+    CURRENT = 0
+    SESSIONS = {}
+    # Shortner runtime toggles (loaded from DB at startup; can be updated live)
+    SHORTNER_ENABLED = True
+    SHORTNER_URL = None      # None → fall back to SHORTLINK_URL from info.py
+    SHORTNER_API = None      # None → fall back to SHORTLINK_API from info.py
+    SHORTNER_TUTORIAL = None # None → fall back to TUTORIAL_LINK from info.py
+    # Post-channel shortner (POST_SHORTLINK_URL/API)
+    POST_SHORT_URL = None
+    POST_SHORT_API = None
+    # Category-verify shortner (CAT_SHORTLINK_URL/API)
+    CAT_SHORT_URL = None
+    CAT_SHORT_API = None
 
 # =================================================
-# 📢 FORCE SUBSCRIBE CHECK (Updated)
+# 📢 UNIFIED FORCE SUBSCRIBE CHECK
+# Merges AUTH_CHANNEL (env var) + DB-backed dynamic channels into one pass.
 # =================================================
-async def is_user_joined(bot, message: Message) -> bool:
-    # Agar AUTH_CHANNEL khali hai to check skip karo
-    if not AUTH_CHANNEL:
+async def check_force_sub(client, message: Message, start_arg: str = "") -> bool:
+    """
+    Single entry-point for all force-subscribe checks.
+    Returns True → user may proceed.
+    Returns False → user was shown a join prompt (caller should return).
+    """
+    if not gcfg('FSUB', FSUB):
         return True
 
-    user_id = message.from_user.id    
-    not_joined_channels = []
-    
-    for channel_id in AUTH_CHANNEL:
-        try:
-            await bot.get_chat_member(channel_id, user_id)
-        except UserNotParticipant:
-            try:
-                chat = await bot.get_chat(channel_id)
-                try:
-                    invite_link = await bot.export_chat_invite_link(channel_id)
-                except ChatAdminRequired:
-                    # Agar bot admin nahi hai to user ko batao
-                    await message.reply_text(
-                        text = (
-                            "<i>🔒 Bᴏᴛ ɪs ɴᴏᴛ ᴀɴ ᴀᴅᴍɪɴ ɪɴ ᴛʜɪs ᴄʜᴀɴɴᴇʟ.\n"
-                            "Pʟᴇᴀsᴇ ᴄᴏɴᴛᴀᴄᴛ ᴛʜᴇ ᴅᴇᴠᴇʟᴏᴘᴇʀ:</i> "
-                            "<b><a href='https://t.me/AV_SUPPORT_GROUP'>[ ᴄʟɪᴄᴋ ʜᴇʀᴇ ]</a></b>"
-                        ),
-                        parse_mode=ParseMode.HTML,
-                        disable_web_page_preview=True
-                    )
-                    return False
-                except Exception as e:
-                    logger.error(f"Failed to export link: {e}")
-                    continue
+    user_id = message.from_user.id
 
-                not_joined_channels.append((chat.title, invite_link))
-            except Exception as e:
-                logger.error(f"[ERROR] Chat fetch failed: {e}")
-                continue
-        except Exception as e:
-            # Agar koi aur error aaye (jaise bot kicked), to ignore karo ya log karo
-            # logger.error(f"[ERROR] get_chat_member failed: {e}")
+    # Owner always passes
+    if user_id == OWNER_ID:
+        return True
+
+    # Combine env-var channels + DB channels, preserving order, no duplicates
+    db_channels = await db.fs_show_channels()
+    all_channels = list(AUTH_CHANNEL)
+    for cid in db_channels:
+        if cid not in all_channels:
+            all_channels.append(cid)
+
+    if not all_channels:
+        return True
+
+    db_channel_set = set(db_channels)
+    not_joined = []  # list of (title, invite_link)
+
+    for channel_id in all_channels:
+        # Resolve request-mode flag (only meaningful for DB channels)
+        request_mode = False
+        if channel_id in db_channel_set:
+            mode = await db.fs_get_channel_mode(channel_id)
+            request_mode = (mode == "on")
+
+        # Check membership
+        is_member = False
+        try:
+            member = await client.get_chat_member(channel_id, user_id)
+            is_member = member.status in {
+                ChatMemberStatus.OWNER,
+                ChatMemberStatus.ADMINISTRATOR,
+                ChatMemberStatus.MEMBER,
+            }
+        except UserNotParticipant:
+            if request_mode:
+                # Give a brief grace window for the approval to propagate, then
+                # check whether this user's join-request was already recorded.
+                await asyncio.sleep(2)
+                is_member = await db.fs_req_user_exist(channel_id, user_id)
+        except ChatAdminRequired:
+            logger.warning(f"[FSUB] Bot is not admin in {channel_id} — skipping.")
+            continue
+        except Exception:
             continue
 
-    if not_joined_channels:
-        buttons = [
-            [InlineKeyboardButton(f"Join {title}", url=link)]
-            for title, link in not_joined_channels
-        ]
-        # Try Again button
-        try_again_link = f"https://t.me/{temp.U_NAME}?start=start" if temp.U_NAME else f"https://t.me/{temp.BOT.username}?start=start"
-        
-        buttons.append([
-            InlineKeyboardButton("🔄 Try Again", url=try_again_link)
-        ])
-        
-        try:
-            if AUTH_PICS:
-                await message.reply_photo(
-                    photo=AUTH_PICS,
-                    caption=script.AUTH_TXT.format(message.from_user.mention),
-                    reply_markup=InlineKeyboardMarkup(buttons),
-                    parse_mode=ParseMode.HTML
-                )
-            else:
-                await message.reply_text(
-                    text=script.AUTH_TXT.format(message.from_user.mention),
-                    reply_markup=InlineKeyboardMarkup(buttons),
-                    parse_mode=ParseMode.HTML
-                )
-        except Exception as e:
-            logger.error(f"Error sending force sub message: {e}")
-            
-        return False
+        if is_member:
+            continue
 
-    return True
+        # Build an invite link for this unjoined channel
+        try:
+            chat = await client.get_chat(channel_id)
+            title = chat.title
+            if request_mode and not chat.username:
+                expire_dt = (
+                    datetime.utcnow() + timedelta(seconds=FSUB_LINK_EXPIRY)
+                    if FSUB_LINK_EXPIRY else None
+                )
+                invite = await client.create_chat_invite_link(
+                    chat_id=channel_id,
+                    creates_join_request=True,
+                    expire_date=expire_dt,
+                )
+                link = invite.invite_link
+            elif chat.username:
+                link = f"https://t.me/{chat.username}"
+            else:
+                expire_dt = (
+                    datetime.utcnow() + timedelta(seconds=FSUB_LINK_EXPIRY)
+                    if FSUB_LINK_EXPIRY else None
+                )
+                invite = await client.create_chat_invite_link(
+                    chat_id=channel_id, expire_date=expire_dt
+                )
+                link = invite.invite_link
+            not_joined.append((title, link))
+        except Exception as e:
+            logger.error(f"[FSUB] Could not build invite for {channel_id}: {e}")
+
+    if not not_joined:
+        return True
+
+    # Send ONE combined join-prompt with all missing channels
+    buttons = [
+        [InlineKeyboardButton(f"Join {title}", url=link)]
+        for title, link in not_joined
+    ]
+    retry_link = (
+        f"https://t.me/{temp.U_NAME}?start={start_arg}"
+        if start_arg
+        else f"https://t.me/{temp.U_NAME}?start=start"
+    )
+    buttons.append([InlineKeyboardButton("🔄 Try Again", url=retry_link)])
+
+    try:
+        if gcfg('AUTH_PICS', AUTH_PICS):
+            await message.reply_photo(
+                photo=gcfg('AUTH_PICS', AUTH_PICS),
+                caption=script.AUTH_TXT.format(message.from_user.mention),
+                reply_markup=InlineKeyboardMarkup(buttons),
+                parse_mode=ParseMode.HTML,
+            )
+        else:
+            await message.reply_text(
+                text=script.AUTH_TXT.format(message.from_user.mention),
+                reply_markup=InlineKeyboardMarkup(buttons),
+                parse_mode=ParseMode.HTML,
+            )
+    except Exception as e:
+        logger.error(f"[FSUB] Error sending join prompt: {e}")
+
+    return False
+
+
+# Backward-compat alias — old call sites that used is_user_joined() still work.
+# They pass FSUB check at call site with `if FSUB and not await is_user_joined(...)`,
+# which is fine — check_force_sub() handles FSUB internally too so double-check is harmless.
+async def is_user_joined(bot, message: Message) -> bool:
+    return await check_force_sub(bot, message)
 
 async def generate_thumbnail(video_path):
     thumb_path = f"/tmp/thumb_{uuid.uuid4().hex}.jpg"
@@ -216,53 +288,33 @@ def get_progress_bar(percent, length=10):
 # =================================================
 # 📢 BROADCAST FUNCTION
 # =================================================
-async def users_broadcast(user_id, message, is_pin, reply_markup=None):
-    """
-    Send a broadcast message to a single user.
-
-    Args:
-        user_id:      Telegram user ID to send to.
-        message:      The Pyrogram Message object to copy.
-        is_pin:       Whether to pin the sent message.
-        reply_markup: Optional InlineKeyboardMarkup to attach to the sent message.
-                      Replaces any existing reply_markup on the original message.
-    """
-    # Build copy kwargs — only include reply_markup when one is actually provided.
-    # Passing reply_markup=None explicitly can raise TypeError on some message
-    # types (sticker, voice, video_note, etc.) in certain Pyrofork versions.
-    copy_kwargs = {"chat_id": user_id}
-    if reply_markup is not None:
-        copy_kwargs["reply_markup"] = reply_markup
-
-    # Use a loop instead of recursion so FloodWait never causes a stack overflow.
-    while True:
-        try:
-            m = await message.copy(**copy_kwargs)
-            if is_pin:
-                try:
-                    await m.pin(both_sides=True)
-                except Exception:
-                    pass
-            return True, "Success"
-        except FloodWait as e:
-            # Wait out the flood and retry in the same call (no recursion).
-            logger.warning(f"FloodWait: sleeping {e.value}s for user {user_id}")
-            await asyncio.sleep(e.value + 1)
-        except InputUserDeactivated:
-            await db.delete_user(int(user_id))
-            logger.info(f"{user_id} - Removed from DB (deleted account).")
-            return False, "Deleted"
-        except UserIsBlocked:
-            logger.info(f"{user_id} - Blocked the bot.")
-            await db.delete_user(int(user_id))
-            return False, "Blocked"
-        except PeerIdInvalid:
-            await db.delete_user(int(user_id))
-            logger.info(f"{user_id} - PeerIdInvalid.")
-            return False, "Error"
-        except Exception as e:
-            logger.error(f"Broadcast error for {user_id}: {e}")
-            return False, "Error"
+async def users_broadcast(user_id, message, is_pin):
+    try:
+        m = await message.copy(chat_id=user_id)
+        if is_pin:
+            try:
+                await m.pin(both_sides=True)
+            except Exception:
+                pass 
+        return True, "Success"
+    except FloodWait as e:
+        await asyncio.sleep(e.value)
+        return await users_broadcast(user_id, message, is_pin)
+    except InputUserDeactivated:
+        await db.delete_user(int(user_id))
+        logging.info(f"{user_id} - Removed from Database, since deleted account.")
+        return False, "Deleted"
+    except UserIsBlocked:
+        logging.info(f"{user_id} - Blocked the bot.")
+        await db.delete_user(user_id)
+        return False, "Blocked"
+    except PeerIdInvalid:
+        await db.delete_user(int(user_id))
+        logging.info(f"{user_id} - PeerIdInvalid")
+        return False, "Error"
+    except Exception as e:
+        logging.error(f"Error broadcasting to {user_id}: {e}")
+        return False, "Error"
         
 # -------------------------- SHORT LINK GENERATOR (Manual) -------------------------- #
 async def get_shortlink(link):

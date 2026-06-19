@@ -98,14 +98,16 @@ def get_exp_time(seconds):
 # ADMIN FILTER (Owner + DB-stored admins)
 # =========================================================
 async def _check_admin(flt, client, update):
+    if not hasattr(update, "from_user") or update.from_user is None:
+        return False
+    user_id = update.from_user.id
+    if user_id == OWNER_ID:
+        return True
     try:
         from database.users_db import db
-        user_id = update.from_user.id
-        if user_id == OWNER_ID:
-            return True
         return await db.fs_admin_exist(user_id)
     except Exception as e:
-        print(f"[check_admin error] {e}")
+        print(f"[admin filter error] uid={user_id} err={e}")
         return False
 
 
@@ -113,115 +115,74 @@ admin = filters.create(_check_admin)
 
 
 # =========================================================
-# DYNAMIC FORCE-SUB CHECK (DB channels)
+# FORCE-SUB HELPERS — thin wrappers around the unified check
+# The real logic now lives in utils.check_force_sub().
+# These are kept so any remaining external callers don't break.
 # =========================================================
 async def is_subscribed(client, user_id):
+    """
+    Deprecated: use utils.check_force_sub() directly.
+    Returns True if the user passes all force-sub checks.
+    Note: this variant does NOT send a message; it only returns a bool.
+    """
     from database.users_db import db
+    from pyrogram.enums import ChatMemberStatus
+    from pyrogram.errors.exceptions.bad_request_400 import UserNotParticipant
+    from info import OWNER_ID, AUTH_CHANNEL
 
-    channel_ids = await db.fs_show_channels()
-    if not channel_ids:
-        return True
     if user_id == OWNER_ID:
         return True
 
-    for cid in channel_ids:
-        if not await _is_sub(client, user_id, cid):
+    db_channels = await db.fs_show_channels()
+    all_channels = list(AUTH_CHANNEL)
+    for cid in db_channels:
+        if cid not in all_channels:
+            all_channels.append(cid)
+
+    if not all_channels:
+        return True
+
+    for cid in all_channels:
+        request_mode = False
+        if cid in set(db_channels):
             mode = await db.fs_get_channel_mode(cid)
-            if mode == "on":
+            request_mode = (mode == "on")
+        try:
+            member = await client.get_chat_member(cid, user_id)
+            if member.status not in {
+                ChatMemberStatus.OWNER,
+                ChatMemberStatus.ADMINISTRATOR,
+                ChatMemberStatus.MEMBER,
+            }:
+                return False
+        except UserNotParticipant:
+            if request_mode:
                 await asyncio.sleep(2)
-                if await _is_sub(client, user_id, cid):
+                if await db.fs_req_user_exist(cid, user_id):
                     continue
             return False
+        except Exception:
+            continue
     return True
 
 
-async def _is_sub(client, user_id, channel_id):
-    from database.users_db import db
-    try:
-        member = await client.get_chat_member(channel_id, user_id)
-        return member.status in {
-            ChatMemberStatus.OWNER,
-            ChatMemberStatus.ADMINISTRATOR,
-            ChatMemberStatus.MEMBER,
-        }
-    except UserNotParticipant:
-        mode = await db.fs_get_channel_mode(channel_id)
-        if mode == "on":
-            return await db.fs_req_user_exist(channel_id, user_id)
-        return False
-    except Exception as e:
-        print(f"[_is_sub error] {e}")
-        return False
-
-
 async def not_joined_message(client, message, start_arg=""):
-    from database.users_db import db
-    buttons = []
-    all_channels = await db.fs_show_channels()
-
-    for chat_id in all_channels:
-        mode = await db.fs_get_channel_mode(chat_id)
-        if await _is_sub(client, message.from_user.id, chat_id):
-            continue
-        try:
-            data = await client.get_chat(chat_id)
-            name = data.title
-            if mode == "on" and not data.username:
-                expire_dt = (
-                    datetime.utcnow() + timedelta(seconds=FSUB_LINK_EXPIRY)
-                    if FSUB_LINK_EXPIRY else None
-                )
-                invite = await client.create_chat_invite_link(
-                    chat_id=chat_id,
-                    creates_join_request=True,
-                    expire_date=expire_dt,
-                )
-                link = invite.invite_link
-            else:
-                if data.username:
-                    link = f"https://t.me/{data.username}"
-                else:
-                    expire_dt = (
-                        datetime.utcnow() + timedelta(seconds=FSUB_LINK_EXPIRY)
-                        if FSUB_LINK_EXPIRY else None
-                    )
-                    invite = await client.create_chat_invite_link(
-                        chat_id=chat_id, expire_date=expire_dt
-                    )
-                    link = invite.invite_link
-            buttons.append([{"text": name, "url": link}])
-        except Exception as e:
-            print(f"[not_joined_message error for {chat_id}] {e}")
-
-    from utils import temp as _temp
-    bot_uname = _temp.U_NAME or client.username.lstrip("@")
-    retry_link = (
-        f"https://t.me/{bot_uname}?start={start_arg}"
-        if start_arg else f"https://t.me/{bot_uname}?start=start"
-    )
-    buttons.append([{"text": "♻️ Try Again", "url": retry_link}])
-
-    from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-    markup = InlineKeyboardMarkup(
-        [[InlineKeyboardButton(b["text"], url=b["url"])] for row in buttons for b in [row[0]]]
-        if buttons else [[]]
-    )
-    # Rebuild properly (each row is already a list)
-    markup = InlineKeyboardMarkup(
-        [
-            [InlineKeyboardButton(btn["text"], url=btn["url"])]
-            for btn in [r[0] for r in buttons]
-        ]
-    )
-    await message.reply(
-        "<b>You need to join our channels to use this bot!</b>",
-        reply_markup=markup,
-    )
+    """
+    Deprecated: use utils.check_force_sub() directly.
+    Delegates to the unified implementation.
+    """
+    from utils import check_force_sub
+    await check_force_sub(client, message, start_arg=start_arg)
 
 
 # =========================================================
 # SHORTLINK HELPER
 # =========================================================
 async def get_shortlink(url, api, link):
-    shortzy = Shortzy(api_key=api, base_site=url)
+    from utils import temp
+    if not temp.SHORTNER_ENABLED:
+        return link
+    effective_url = temp.SHORTNER_URL or url
+    effective_api = temp.SHORTNER_API or api
+    shortzy = Shortzy(api_key=effective_api, base_site=effective_url)
     return await shortzy.convert(link)

@@ -1,4 +1,5 @@
 import os
+import time
 from pyrogram import Client
 from info import API_ID, API_HASH, BOT_TOKEN, LOG_CHANNEL, PORT, ADMINS, DB_CHANNEL
 from aiohttp import web
@@ -6,6 +7,8 @@ from route import web_server, ping_server, check_expired_premium, start_schedule
 import pytz
 from datetime import date, datetime
 from utils import temp
+from database.users_db import db
+import bot_cfg
 
 
 class Bot(Client):
@@ -28,7 +31,29 @@ class Bot(Client):
         temp.U_NAME = me.username
         temp.B_NAME = me.first_name
         temp.B_LINK = me.mention
+        temp.START_TIME = time.time()
         self.username = "@" + me.username
+
+        # --- Load all admin panel bot_config overrides from DB ---
+        try:
+            all_cfg = await db.get_all_bot_config()
+            bot_cfg.load(all_cfg)
+        except Exception as e:
+            print(f"⚠️  Could not load bot config overrides: {e}")
+
+        # --- Load shortner settings from DB into temp ---
+        try:
+            sht = await db.get_shortner_settings()
+            temp.SHORTNER_ENABLED = sht.get("is_enabled", True)
+            temp.SHORTNER_URL = sht.get("short_url")      # None = use env var fallback
+            temp.SHORTNER_API = sht.get("short_api")      # None = use env var fallback
+            temp.SHORTNER_TUTORIAL = sht.get("tutorial_link")
+            temp.POST_SHORT_URL = sht.get("post_short_url")
+            temp.POST_SHORT_API = sht.get("post_short_api")
+            temp.CAT_SHORT_URL = sht.get("cat_short_url")
+            temp.CAT_SHORT_API = sht.get("cat_short_api")
+        except Exception as e:
+            print(f"⚠️  Could not load shortner settings: {e}")
 
         # --- Set up DB channel for File Store ---
         if DB_CHANNEL:
