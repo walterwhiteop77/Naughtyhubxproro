@@ -38,6 +38,7 @@ from database.player_db import (
     bookmark_limit_premium,
 )
 from info import PROTECT_CONTENT
+from bot_cfg import gcfg
 
 
 PAGE_SIZE = 5
@@ -291,7 +292,7 @@ async def _bookmark_callback_impl(client, q: CallbackQuery):
             sent = await client.send_video(
                 chat_id=q.message.chat.id,
                 video=file_id,
-                protect_content=PROTECT_CONTENT,
+                protect_content=gcfg('PROTECT_CONTENT', PROTECT_CONTENT),
                 caption=caption,
                 reply_to_message_id=q.message.id,
                 reply_markup=kb,

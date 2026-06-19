@@ -34,6 +34,10 @@ from database.player_db import (
     bookmark_limit_free,
     bookmark_limit_premium,
 )
+import random
+import string
+import time
+
 from info import (
     PROTECT_CONTENT,
     DAILY_LIMIT,
@@ -41,10 +45,15 @@ from info import (
     VERIFICATION_DAILY_LIMIT,
     FSUB,
     IS_VERIFY,
+    CAT_SHORTLINK_URL,
+    CAT_SHORTLINK_API,
+    CAT_VERIFY_EXPIRE,
 )
+from bot_cfg import gcfg
 from plugins.verification import av_x_verification
 from plugins.ban_manager import ban_manager
-from utils import temp, auto_delete_message, is_user_joined
+from utils import temp, auto_delete_message, check_force_sub
+from helper_func import get_shortlink, get_exp_time
 
 
 # ======================================================================
@@ -135,6 +144,13 @@ async def _render_keyboard(
 
 def _category_picker(user_id: int, current: str | None) -> InlineKeyboardMarkup:
     cats = get_categories()
+    return _category_picker_async(user_id, current, cats)
+
+
+def _category_picker_async(
+    user_id: int, current: str | None, cats: list
+) -> InlineKeyboardMarkup:
+    """Build the category picker keyboard from a pre-fetched cats list."""
     options = cats + [ALL_VIDEOS_LABEL]
     rows = []
     row = []
@@ -232,18 +248,18 @@ async def _check_limits_for_message(client, m: Message, user_id: int) -> bool:
     ])
 
     if is_premium:
-        if used >= PREMIUM_DAILY_LIMIT:
+        if used >= gcfg('PREMIUM_DAILY_LIMIT', PREMIUM_DAILY_LIMIT):
             await m.reply(
-                f"𝖸𝗈𝗎'𝗏𝖾 𝖱𝖾𝖺𝖼𝗁𝖾𝖽 𝖸𝗈𝗎𝗋 𝖯𝗋𝖾𝗆𝗂𝗎𝗆 𝖫𝗂𝗆𝗂𝗍 𝖮𝖿 {PREMIUM_DAILY_LIMIT} 𝖥𝗂𝗅𝖾𝗌.\n"
+                f"𝖸𝗈𝗎'𝗏𝖾 𝖱𝖾𝖺𝖼𝗁𝖾𝖽 𝖸𝗈𝗎𝗋 𝖯𝗋𝖾𝗆𝗂𝗎𝗆 𝖫𝗂𝗆𝗂𝗍 𝖮𝖿 {gcfg('PREMIUM_DAILY_LIMIT', PREMIUM_DAILY_LIMIT)} 𝖥𝗂𝗅𝖾𝗌.\n"
                 f"𝖳𝗋𝗒 𝖠𝗀𝖺𝗂𝗇 𝖳𝗈𝗆𝗈𝗋𝗋𝗈𝗐!"
             )
             return False
     else:
-        if used >= VERIFICATION_DAILY_LIMIT:
+        if used >= gcfg('VERIFICATION_DAILY_LIMIT', VERIFICATION_DAILY_LIMIT):
             await m.reply(limit_reached_msg, reply_markup=buy_button)
             return False
-        if used >= DAILY_LIMIT:
-            if IS_VERIFY:
+        if used >= gcfg('DAILY_LIMIT', DAILY_LIMIT):
+            if gcfg('IS_VERIFY', IS_VERIFY):
                 verified = await av_x_verification(client, m)
                 if not verified:
                     return False
@@ -259,16 +275,16 @@ async def _check_limits_for_callback(client, q: CallbackQuery, session: dict) ->
     used = await db.get_video_count(user_id) or 0
 
     if is_premium:
-        if used >= PREMIUM_DAILY_LIMIT:
+        if used >= gcfg('PREMIUM_DAILY_LIMIT', PREMIUM_DAILY_LIMIT):
             await q.answer(
-                f"You've reached your premium daily limit of {PREMIUM_DAILY_LIMIT}. "
+                f"You've reached your premium daily limit of {gcfg('PREMIUM_DAILY_LIMIT', PREMIUM_DAILY_LIMIT)}. "
                 "Try again tomorrow.",
                 show_alert=True,
             )
             return False
         return True
 
-    if used >= VERIFICATION_DAILY_LIMIT:
+    if used >= gcfg('VERIFICATION_DAILY_LIMIT', VERIFICATION_DAILY_LIMIT):
         await q.answer(
             f"You've reached your daily limit of {used} files. "
             "Try again tomorrow or buy a subscription.",
@@ -276,8 +292,8 @@ async def _check_limits_for_callback(client, q: CallbackQuery, session: dict) ->
         )
         return False
 
-    if used >= DAILY_LIMIT:
-        if IS_VERIFY:
+    if used >= gcfg('DAILY_LIMIT', DAILY_LIMIT):
+        if gcfg('IS_VERIFY', IS_VERIFY):
             # Only nag the user if they are NOT already verified. A user who
             # has verified during this verification window can continue
             # silently; previously we popped the toast before checking and
@@ -300,6 +316,72 @@ async def _check_limits_for_callback(client, q: CallbackQuery, session: dict) ->
 
 
 # ----------------------------------------------------------------------
+# Category-change access helpers
+# ----------------------------------------------------------------------
+async def _check_cat_access(user_id: int) -> bool:
+    """
+    Returns True if the user may use Change Category:
+      - Premium subscriber, OR
+      - Has a valid (not-expired) category verification token.
+    """
+    if await db.has_premium_access(user_id):
+        return True
+    status = await db.cat_get_verify_status(user_id)
+    if status.get("is_verified") and CAT_VERIFY_EXPIRE > 0:
+        age = time.time() - status.get("verified_time", 0)
+        if age < CAT_VERIFY_EXPIRE:
+            return True
+    return False
+
+
+async def _send_cat_upsell(client, q: CallbackQuery, session: dict, user_id: int):
+    """
+    Sends a message with two options for non-premium users:
+      1. Verify via shortlink (using CAT_SHORTLINK_URL / CAT_SHORTLINK_API) — free access
+      2. Buy Premium
+    Also expires any stale cat-verify token for this user.
+    """
+    await q.answer()
+
+    # Generate a fresh token and save it
+    token = "".join(random.choices(string.ascii_letters + string.digits, k=10))
+    await db.cat_update_verify_status(user_id, verify_token=token, is_verified=False, verified_time=0)
+
+    # Build the deep-link and shorten it (with the CAT-specific API)
+    raw_link = f"https://t.me/{temp.U_NAME}?start=cat_verify_{token}"
+    if CAT_SHORTLINK_API:
+        try:
+            verify_link = await get_shortlink(CAT_SHORTLINK_URL, CAT_SHORTLINK_API, raw_link)
+        except Exception:
+            verify_link = raw_link
+    else:
+        verify_link = raw_link
+
+    expire_txt = get_exp_time(CAT_VERIFY_EXPIRE) if CAT_VERIFY_EXPIRE else "unlimited"
+
+    try:
+        upsell = await client.send_message(
+            chat_id=session["chat_id"],
+            text=(
+                "🔄 <b>Change Category</b>\n\n"
+                "This feature is available to <b>Premium</b> users or free users who verify.\n\n"
+                f"✅ <b>Verify for free</b> — access lasts <b>{expire_txt}</b>\n"
+                "💎 <b>Buy Premium</b> — unlimited access + higher daily limit"
+            ),
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("🔗 Verify (Free Access)", url=verify_link)],
+                [InlineKeyboardButton("💎 Buy Premium", callback_data="get")],
+            ]),
+            reply_to_message_id=session["message_id"],
+        )
+        trigger = session.get("trigger_msg")
+        if trigger:
+            asyncio.create_task(auto_delete_message(trigger, upsell))
+    except Exception:
+        pass
+
+
+# ----------------------------------------------------------------------
 # Premium upsell helper
 # ----------------------------------------------------------------------
 async def _send_premium_upsell(client, q: CallbackQuery, session: dict, feature: str):
@@ -314,8 +396,8 @@ async def _send_premium_upsell(client, q: CallbackQuery, session: dict, feature:
             text=(
                 f"👑 <b>Premium feature: {feature}</b>\n\n"
                 "Upgrade to unlock:\n"
-                f"• Up to <b>{PREMIUM_DAILY_LIMIT}</b> videos/day "
-                f"(vs <b>{VERIFICATION_DAILY_LIMIT}</b> for free users)\n"
+                f"• Up to <b>{gcfg('PREMIUM_DAILY_LIMIT', PREMIUM_DAILY_LIMIT)}</b> videos/day "
+                f"(vs <b>{gcfg('VERIFICATION_DAILY_LIMIT', VERIFICATION_DAILY_LIMIT)}</b> for free users)\n"
                 "• <b>Download</b> any video in original quality\n"
                 "• <b>Change Category</b> to filter by your taste\n"
                 "• No verification step"
@@ -347,7 +429,7 @@ async def handle_video_request(client, m: Message):
         if not m.from_user:
             return
 
-        if FSUB and not await is_user_joined(client, m):
+        if not await check_force_sub(client, m):
             return
 
         user_id = m.from_user.id
@@ -405,7 +487,7 @@ async def handle_video_request(client, m: Message):
             sent = await client.send_video(
                 chat_id=m.chat.id,
                 video=video_id,
-                protect_content=PROTECT_CONTENT,
+                protect_content=gcfg('PROTECT_CONTENT', PROTECT_CONTENT),
                 caption=caption,
                 reply_to_message_id=m.id,
                 reply_markup=keyboard,
@@ -587,11 +669,10 @@ async def _video_player_callback_impl(client, q: CallbackQuery):
             await q.answer(f"Download failed: {e}", show_alert=True)
         return
 
-    # ---------------- CHANGE CATEGORY (premium-only) ----------------
+    # ---------------- CHANGE CATEGORY (premium OR cat-verified) ----------------
     if action == "catmenu":
-        is_premium = await db.has_premium_access(owner_id)
-        if not is_premium:
-            await _send_premium_upsell(client, q, session, "Change Category")
+        if not await _check_cat_access(owner_id):
+            await _send_cat_upsell(client, q, session, owner_id)
             return
         # Send / replace the picker message
         old_picker = session.get("cat_menu_msg_id")
@@ -600,6 +681,7 @@ async def _video_player_callback_impl(client, q: CallbackQuery):
                 await client.delete_messages(session["chat_id"], old_picker)
             except Exception:
                 pass
+        cats = await player_db.get_categories_merged()
         try:
             picker = await client.send_message(
                 chat_id=session["chat_id"],
@@ -608,7 +690,7 @@ async def _video_player_callback_impl(client, q: CallbackQuery):
                     f"<i>Current:</i> <b>{session.get('category') or ALL_VIDEOS_LABEL}</b>\n"
                     "Choose a category:"
                 ),
-                reply_markup=_category_picker(owner_id, session.get("category")),
+                reply_markup=_category_picker_async(owner_id, session.get("category"), cats),
                 reply_to_message_id=session["message_id"],
             )
             session["cat_menu_msg_id"] = picker.id
@@ -630,16 +712,16 @@ async def _video_player_callback_impl(client, q: CallbackQuery):
 
     if action == "setcat":
         idx = int(parts[3]) if len(parts) > 3 else 0
-        cats = get_categories()
+        cats = await player_db.get_categories_merged()
         options = cats + [ALL_VIDEOS_LABEL]
         if idx < 0 or idx >= len(options):
             return await q.answer("Invalid category")
         choice = options[idx]
         new_category = None if choice == ALL_VIDEOS_LABEL else choice
 
-        # Premium re-check (defensive)
-        if not await db.has_premium_access(owner_id):
-            return await _send_premium_upsell(client, q, session, "Change Category")
+        # Access re-check (defensive — token may have expired between catmenu and setcat)
+        if not await _check_cat_access(owner_id):
+            return await _send_cat_upsell(client, q, session, owner_id)
 
         # Limit / verification check (this counts as a fresh fetch)
         if not await _check_limits_for_callback(client, q, session):

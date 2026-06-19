@@ -1,12 +1,39 @@
 import os
+import time
+import psutil
 import pytz
-from datetime import datetime
+from datetime import datetime, timedelta
 from pyrogram import Client, filters
 from pyrogram.types import *
 from database.users_db import db
 from info import ADMINS, PREMIUM_DAILY_LIMIT, DAILY_LIMIT, VERIFICATION_DAILY_LIMIT
-from utils import get_size
+from utils import get_size, temp
 from Script import script
+
+
+def _fmt_size(b: int) -> str:
+    for unit in ("B", "KB", "MB", "GB", "TB"):
+        if b < 1024:
+            return f"{b:.2f} {unit}"
+        b /= 1024
+    return f"{b:.2f} PB"
+
+
+def _fmt_uptime(seconds: float) -> str:
+    td = timedelta(seconds=int(seconds))
+    days = td.days
+    hours, rem = divmod(td.seconds, 3600)
+    minutes, secs = divmod(rem, 60)
+    parts = []
+    if days:
+        parts.append(f"{days}d")
+    if hours:
+        parts.append(f"{hours}h")
+    if minutes:
+        parts.append(f"{minutes}m")
+    parts.append(f"{secs}s")
+    return " ".join(parts)
+
 
 # ---------------------------------------------------------------------------------
 # 📊 BOT STATISTICS COMMAND
@@ -21,15 +48,40 @@ async def get_stats(bot, message: Message):
     blocked = await db.total_blocked_count()
     redeem = await db.total_redeem_count()
     dbsize = await db.get_db_size()
-    freespace = 536870912 - dbsize 
+    freespace = 536870912 - dbsize
     try:
         db_size_human = get_size(dbsize)
         free_space_human = get_size(freespace)
-    except:
-        db_size_human = await get_size(dbsize)
-        free_space_human = await get_size(freespace)
+    except Exception:
+        db_size_human = str(dbsize)
+        free_space_human = str(freespace)
+
+    # --- System stats via psutil ---
+    cpu_pct = psutil.cpu_percent(interval=0.5)
+    ram = psutil.virtual_memory()
+    disk = psutil.disk_usage("/")
+    swap = psutil.swap_memory()
+    net = psutil.net_io_counters()
+    bot_proc = psutil.Process(os.getpid())
+    bot_ram_mb = bot_proc.memory_info().rss / (1024 * 1024)
+    bot_cpu_pct = bot_proc.cpu_percent(interval=0.1)
+    uptime_secs = time.time() - (temp.START_TIME or time.time())
+
+    sys_block = (
+        f"\n\n<b>🖥 System</b>\n"
+        f"├ <b>CPU:</b> <code>{cpu_pct:.1f}%</code>\n"
+        f"├ <b>RAM:</b> <code>{_fmt_size(ram.used)} / {_fmt_size(ram.total)}</code> ({ram.percent:.1f}%)\n"
+        f"├ <b>Disk:</b> <code>{_fmt_size(disk.used)} / {_fmt_size(disk.total)}</code> ({disk.percent:.1f}%)\n"
+        f"├ <b>Swap:</b> <code>{_fmt_size(swap.used)} / {_fmt_size(swap.total)}</code>\n"
+        f"├ <b>Net ↑:</b> <code>{_fmt_size(net.bytes_sent)}</code>  "
+        f"<b>↓:</b> <code>{_fmt_size(net.bytes_recv)}</code>\n"
+        f"├ <b>Bot RAM:</b> <code>{bot_ram_mb:.1f} MB</code>  "
+        f"<b>CPU:</b> <code>{bot_cpu_pct:.1f}%</code>\n"
+        f"└ <b>Uptime:</b> <code>{_fmt_uptime(uptime_secs)}</code>"
+    )
+
     try:
-        await aVBOTz.edit(script.STATS_TXT.format(
+        base_text = script.STATS_TXT.format(
             total_users=total_users,
             premium_users=premium_users,
             redeem=redeem,
@@ -38,7 +90,8 @@ async def get_stats(bot, message: Message):
             brazzers=brazzers,
             db_size_human=db_size_human,
             free_space_human=free_space_human
-        ))
+        )
+        await aVBOTz.edit(base_text + sys_block)
     except Exception as e:
         await aVBOTz.edit(f"❌ **Error in Stats Format:** {e}")
 

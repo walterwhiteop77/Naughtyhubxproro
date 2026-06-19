@@ -10,6 +10,7 @@ from info import (
     VERIFIED_LOG, TIMEZONE, VERIFY_IMG,
     TUTORIAL_LINK, IS_VERIFY
 )
+from bot_cfg import gcfg
 from database.users_db import db
 from utils import temp, get_shortlink_av, auto_delete_message
 from Script import script
@@ -21,7 +22,7 @@ async def av_x_verification(client, message):
     user_id = message.from_user.id
     
     # 1. Check if Verification is ON/OFF
-    if IS_VERIFY:
+    if gcfg('IS_VERIFY', IS_VERIFY):
         user_verified = await db.is_user_verified(user_id)
     else:
         user_verified = True 
@@ -40,12 +41,12 @@ async def av_x_verification(client, message):
     await db.create_verify_id(user_id, verify_id, file_id)
     
     # Link Generation
-    long_url = f"https://telegram.me/{temp.U_NAME}?start=avbotz_{user_id}_{verify_id}"
+    long_url = f"https://telegram.me/{temp.U_NAME}?start=verify_{user_id}_{verify_id}"
     verify_url = await get_shortlink_av(long_url)
     
     buttons = [[
         InlineKeyboardButton(text="⚠️ ᴠᴇʀɪғʏ ⚠️", url=verify_url), 
-        InlineKeyboardButton(text="❗ ʜᴏᴡ ᴛᴏ ᴠᴇʀɪғʏ ❗", url=TUTORIAL_LINK)
+        InlineKeyboardButton(text="❗ ʜᴏᴡ ᴛᴏ ᴠᴇʀɪғʏ ❗", url=gcfg('TUTORIAL_LINK', TUTORIAL_LINK))
     ]]
     
     user_name = message.from_user.first_name
@@ -121,7 +122,7 @@ async def verify_user_on_start(client, message):
                 logger.warning(f"Failed to send log: {e}")
                 
         await message.reply_photo(
-            photo=VERIFY_IMG, 
+            photo=gcfg('VERIFY_IMG', VERIFY_IMG),
             caption=txt.format(message.from_user.mention), 
             reply_markup=btn, 
             parse_mode=enums.ParseMode.HTML

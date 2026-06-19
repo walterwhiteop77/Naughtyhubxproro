@@ -3,6 +3,7 @@ from pyrogram.types import Message, InlineKeyboardButton, InlineKeyboardMarkup, 
 from Script import script
 from database.users_db import db
 from info import VERIFICATION_DAILY_LIMIT, DAILY_LIMIT, PREMIUM_DAILY_LIMIT, ADMINS, LOG_CHANNEL, PREMIUM_LOGS, OWNER_USERNAME, UPI_ID, QR_CODE_IMAGE
+from bot_cfg import gcfg
 from datetime import timedelta
 import pytz, datetime, time, asyncio
 from pyrogram.errors.exceptions.bad_request_400 import MessageTooLong
@@ -75,13 +76,17 @@ async def buy_handler(client, message: Message):
     if is_premium:
         await message.reply_text("✅ 𝖸𝗈𝗎 �𝖠𝗅𝗋𝖾𝖺𝖽𝗒 𝖯𝗎𝗋𝖼𝗁𝖺𝗌𝖾𝖽 �𝖮𝗎𝗋 𝖲𝗎𝖻𝗌𝖼𝗋𝗂𝗉𝗍𝗂𝗈𝗇! 𝖤𝗇𝗃𝗈𝗒 𝖸𝗈𝗎𝗋 𝖡𝖾𝗇𝖾𝖿𝗂𝗍.", quote=True)
         return
-    text = script.SEENBUY_TXT.format(DAILY_LIMIT, PREMIUM_DAILY_LIMIT, UPI_ID)
+    text = script.SEENBUY_TXT.format(
+        gcfg('DAILY_LIMIT', DAILY_LIMIT),
+        gcfg('PREMIUM_DAILY_LIMIT', PREMIUM_DAILY_LIMIT),
+        gcfg('UPI_ID', UPI_ID),
+    )
     btn = [
         [InlineKeyboardButton('✖️ ᴄʟᴏsᴇ ✖️', callback_data='close_data')]
     ]
-    if QR_CODE_IMAGE:
+    if gcfg('QR_CODE_IMAGE', QR_CODE_IMAGE):
         await message.reply_photo(
-            photo=QR_CODE_IMAGE,
+            photo=gcfg('QR_CODE_IMAGE', QR_CODE_IMAGE),
             caption=text,
             reply_markup=InlineKeyboardMarkup(btn)
         )
@@ -180,13 +185,13 @@ async def myplan_handler(_, m: Message):
 
     # -------- LIMIT LOGIC --------
     if is_premium:
-        daily_limit = PREMIUM_DAILY_LIMIT
+        daily_limit = gcfg('PREMIUM_DAILY_LIMIT', PREMIUM_DAILY_LIMIT)
         subscription_type = "𝖯𝖺𝗂𝖽"
     elif is_verified:
-        daily_limit = VERIFICATION_DAILY_LIMIT
+        daily_limit = gcfg('VERIFICATION_DAILY_LIMIT', VERIFICATION_DAILY_LIMIT)
         subscription_type = "𝖵𝖾𝗋𝗂𝖿𝗂𝖾𝖽"
     else:
-        daily_limit = DAILY_LIMIT
+        daily_limit = gcfg('DAILY_LIMIT', DAILY_LIMIT)
         subscription_type = "𝖥𝗋𝖾𝖾"
 
     remaining = max(daily_limit - used, 0)

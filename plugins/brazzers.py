@@ -4,7 +4,8 @@ from pyrogram import Client, filters, StopPropagation
 from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
 from database.users_db import db
 from info import LOG_CHANNEL, PREMIUM_DAILY_LIMIT, FSUB, PROTECT_CONTENT
-from utils import temp, auto_delete_message, is_user_joined
+from bot_cfg import gcfg
+from utils import temp, auto_delete_message, check_force_sub
 from plugins.ban_manager import ban_manager
 
 
@@ -17,7 +18,7 @@ async def handle_brazzers_request(client, m: Message):
         if not m.from_user:
             return
 
-        if FSUB and not await is_user_joined(client, m):
+        if not await check_force_sub(client, m):
             return
 
         user_id = m.from_user.id
@@ -37,9 +38,9 @@ async def handle_brazzers_request(client, m: Message):
             return
 
         used_today = await db.get_video_count(user_id)
-        if used_today >= PREMIUM_DAILY_LIMIT:
+        if used_today >= gcfg('PREMIUM_DAILY_LIMIT', PREMIUM_DAILY_LIMIT):
             await m.reply(
-                f"⚠️ 𝖸𝗈𝗎'𝗏𝖾 𝖱𝖾𝖺𝖼𝗁𝖾𝖽 𝖸𝗈𝗎𝗋 𝖣𝖺𝗂𝗅𝗒 𝖫𝗂𝗆𝗂𝗍 𝖮𝖿 {PREMIUM_DAILY_LIMIT} 𝖥𝗂𝗅𝖾𝗌. 𝖳𝗋𝗒 𝖠𝗀𝖺𝗂𝗇 𝖳𝗈𝗆𝗈𝗋𝗋𝗈𝗐"
+                f"⚠️ 𝖸𝗈𝗎'𝗏𝖾 𝖱𝖾𝖺𝖼𝗁𝖾𝖽 𝖸𝗈𝗎𝗋 𝖣𝖺𝗂𝗅𝗒 𝖫𝗂𝗆𝗂𝗍 𝖮𝖿 {gcfg('PREMIUM_DAILY_LIMIT', PREMIUM_DAILY_LIMIT)} 𝖥𝗂𝗅𝖾𝗌. 𝖳𝗋𝗒 𝖠𝗀𝖺𝗂𝗇 𝖳𝗈𝗆𝗈𝗋𝗋𝗈𝗐"
             )
             return
 
@@ -51,7 +52,7 @@ async def handle_brazzers_request(client, m: Message):
         dlt = await client.send_video(
             chat_id=m.chat.id,
             video=video_id,
-            protect_content=PROTECT_CONTENT,
+            protect_content=gcfg('PROTECT_CONTENT', PROTECT_CONTENT),
             caption=(
                 f"𝘗𝘰𝘸𝘦𝘳𝘦𝘥 𝘉𝘺: {temp.B_LINK}\n\n"
                 "<blockquote>ᴛʜɪꜱ ꜰɪʟᴇ ᴡɪʟʟ ʙᴇ ᴀᴜᴛᴏ ᴅᴇʟᴇᴛᴇ ᴀꜰᴛᴇʀ 10 ᴍɪɴᴜᴛᴇꜱ. "

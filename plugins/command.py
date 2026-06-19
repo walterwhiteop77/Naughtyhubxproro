@@ -13,16 +13,17 @@ from pyrogram.enums import ParseMode
 
 from Script import script
 from database.users_db import db
+from bot_cfg import gcfg
 from info import (
     START_PIC, LOG_CHANNEL, PREMIUM_LOGS, FSUB, QR_CODE_IMAGE,
     DAILY_LIMIT, PREMIUM_DAILY_LIMIT, UPI_ID, PROTECT_CONTENT,
     CUSTOM_CAPTION, DISABLE_CHANNEL_BUTTON, SHORTLINK_URL, SHORTLINK_API,
-    FS_VERIFY_EXPIRE, IS_VERIFY,
+    FS_VERIFY_EXPIRE, IS_VERIFY, CAT_VERIFY_EXPIRE,
 )
-from utils import temp, is_user_joined
+from utils import temp, check_force_sub
 from helper_func import (
     encode, decode, get_messages, get_exp_time,
-    is_subscribed, not_joined_message, get_shortlink,
+    get_shortlink,
 )
 from plugins.verification import verify_user_on_start
 from plugins.send_file import send_requested_file
@@ -41,20 +42,14 @@ async def start_command(client, message: Message):
 
     argument = message.command[1] if len(message.command) > 1 else None
 
-    # --- Static force-sub check (AUTH_CHANNEL env var based) ---
-    if FSUB and not await is_user_joined(client, message):
-        return
-
-    # --- Dynamic force-sub check (DB channels) ---
-    if not await is_subscribed(client, user_id):
-        start_arg = argument or ""
-        await not_joined_message(client, message, start_arg)
+    # --- Unified force-sub check (env-var + DB channels in one pass) ---
+    if not await check_force_sub(client, message, start_arg=argument or ""):
         return
 
     # ------------------------------------------------------------------
-    # Handle avbotz verification token (original system)
+    # Handle verification token (original system)
     # ------------------------------------------------------------------
-    if argument and argument.startswith("avbotz"):
+    if argument and argument.startswith("verify_"):
         await verify_user_on_start(client, message)
         return
 
@@ -72,6 +67,23 @@ async def start_command(client, message: Message):
         )
         return await message.reply(
             f"✅ Token verified! Valid for {get_exp_time(FS_VERIFY_EXPIRE)}"
+        )
+
+    # ------------------------------------------------------------------
+    # Handle category-change token verification (cat_verify_ prefix)
+    # ------------------------------------------------------------------
+    if argument and argument.startswith("cat_verify_"):
+        _, token = argument.split("cat_verify_", 1)
+        verify_status = await db.cat_get_verify_status(user_id)
+        if verify_status.get("verify_token") != token:
+            return await message.reply("⚠️ Invalid or expired token. Please tap 🔄 Change Category again.")
+        await db.cat_update_verify_status(
+            user_id, is_verified=True, verified_time=time.time(),
+            verify_token=token
+        )
+        return await message.reply(
+            f"✅ <b>Verified!</b> You can now use <b>Change Category</b> for {get_exp_time(CAT_VERIFY_EXPIRE)}.\n\n"
+            "<i>Go back to your video player and tap 🔄 Change Category.</i>"
         )
 
     # ------------------------------------------------------------------
@@ -107,7 +119,7 @@ async def start_command(client, message: Message):
     # ------------------------------------------------------------------
     # File Store link (base64 encoded "get-..." token)
     # ------------------------------------------------------------------
-    if argument and not argument.startswith(("avbotz", "reff_", "avx-", "terms", "disclaimer", "help", "about")):
+    if argument and not argument.startswith(("verify_", "reff_", "avx-", "terms", "disclaimer", "help", "about")):
         # Try to decode as a file store link
         try:
             decoded = await decode(argument)
@@ -140,7 +152,7 @@ async def start_command(client, message: Message):
     )
 
     await message.reply_photo(
-        photo=START_PIC,
+        photo=gcfg('START_PIC', START_PIC),
         caption=script.START_TXT.format(mention, temp.U_NAME, temp.U_NAME),
         reply_markup=reply_keyboard,
         has_spoiler=True,
@@ -152,7 +164,7 @@ async def start_command(client, message: Message):
 # =================================================
 async def _handle_file_store_link(client, message: Message, user_id, argument, decoded):
     # File-store token verification gate
-    if IS_VERIFY and SHORTLINK_URL and SHORTLINK_API:
+    if gcfg('IS_VERIFY', IS_VERIFY) and gcfg('SHORTLINK_URL', SHORTLINK_URL) and gcfg('SHORTLINK_API', SHORTLINK_API):
         verify_status = await db.fs_get_verify_status(user_id)
         is_premium = await db.has_premium_access(user_id)
 
@@ -267,19 +279,24 @@ async def send_about_text(client, message):
 # =================================================
 # CALLBACK QUERY HANDLER
 # =================================================
-@Client.on_callback_query()
+@Client.on_callback_query(group=1)
 async def cb_handler(client: Client, query):
     data = query.data
     user_id = query.from_user.id
 
     if data == "close_data":
+        await query.answer()
         await query.message.delete()
 
     elif data == "get":
         buttons = [[InlineKeyboardButton("• 𝖢𝗅𝗈𝗌𝖾 •", callback_data="close_data")]]
         await query.message.reply_photo(
-            photo=QR_CODE_IMAGE,
-            caption=script.SEENBUY_TXT.format(DAILY_LIMIT, PREMIUM_DAILY_LIMIT, UPI_ID),
+            photo=gcfg('QR_CODE_IMAGE', QR_CODE_IMAGE),
+            caption=script.SEENBUY_TXT.format(
+                gcfg('DAILY_LIMIT', DAILY_LIMIT),
+                gcfg('PREMIUM_DAILY_LIMIT', PREMIUM_DAILY_LIMIT),
+                gcfg('UPI_ID', UPI_ID),
+            ),
             reply_markup=InlineKeyboardMarkup(buttons),
             parse_mode=enums.ParseMode.HTML,
         )

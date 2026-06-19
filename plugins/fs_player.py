@@ -6,10 +6,14 @@ Displays file-store links (single file or batch) in a navigable player.
 Controls:
   ⏮ Previous  |  📄 X / N  |  Next ▶️
              ✖️ Close
+  📥 Get All Files   (batch only)
+  🔗 Share Playlist  (batch only)
 
 - Edits the player message in-place when possible (edit_message_media).
 - Falls back to delete + resend for types that can't be edited.
 - Auto-deletes after the admin-configured timer; shows "Get file again" button.
+- "Get All Files" sends every file at once and auto-deletes them all.
+- Opening a new batch link closes any previous open player for that user.
 """
 
 import asyncio
@@ -45,10 +49,11 @@ FS_SESSIONS: dict = {}
 # ======================================================================
 # Keyboard
 # ======================================================================
-def _kbd(user_id: int, index: int, total: int) -> InlineKeyboardMarkup:
+def _kbd(user_id: int, index: int, total: int, argument: str = "") -> InlineKeyboardMarkup:
     has_prev = index > 0
     has_next = index < total - 1
-    return InlineKeyboardMarkup([
+
+    rows = [
         [
             InlineKeyboardButton(
                 "⏮ Previous" if has_prev else "⏮",
@@ -66,7 +71,25 @@ def _kbd(user_id: int, index: int, total: int) -> InlineKeyboardMarkup:
         [
             InlineKeyboardButton("✖️ Close", callback_data=f"fsp:close:{user_id}"),
         ],
-    ])
+    ]
+
+    if total > 1:
+        rows.append([
+            InlineKeyboardButton(
+                "📥 Get All Files",
+                callback_data=f"fsp:getall:{user_id}",
+            ),
+        ])
+        if argument:
+            share_url = f"https://t.me/{temp.U_NAME}?start={argument}"
+            rows.append([
+                InlineKeyboardButton(
+                    "🔗 Share Playlist",
+                    url=f"https://telegram.me/share/url?url={share_url}",
+                ),
+            ])
+
+    return InlineKeyboardMarkup(rows)
 
 
 # ======================================================================
@@ -130,7 +153,6 @@ async def _send_file(
             protect_content=PROTECT_CONTENT,
             reply_markup=reply_markup,
         )
-    # Fallback: text
     text = (msg.text.html if msg.text else "📄 File")
     return await client.send_message(
         chat_id=chat_id, text=text,
@@ -146,13 +168,13 @@ async def _edit_player(client, session: dict, user_id: int, new_index: int):
     total = len(messages)
     msg = messages[new_index]
     auto_del = session.get("auto_del_secs", AUTO_DELETE_SECS)
+    argument = session.get("argument", "")
 
     cap = _build_caption(msg, new_index, total, auto_del)
-    kbd = _kbd(user_id, new_index, total)
+    kbd = _kbd(user_id, new_index, total, argument)
     chat_id = session["chat_id"]
     player_msg_id = session["player_msg_id"]
 
-    # Build InputMedia for supported types
     input_media = None
     if msg.video:
         input_media = InputMediaVideo(
@@ -181,9 +203,8 @@ async def _edit_player(client, session: dict, user_id: int, new_index: int):
             session["index"] = new_index
             return
         except Exception:
-            pass  # fall through to delete + resend
+            pass
 
-    # Fallback: delete current, send new
     try:
         await client.delete_messages(chat_id, player_msg_id)
     except Exception:
@@ -196,7 +217,7 @@ async def _edit_player(client, session: dict, user_id: int, new_index: int):
 
 
 # ======================================================================
-# Auto-delete background task
+# Auto-delete background task (single player message)
 # ======================================================================
 async def _auto_delete_task(
     client, user_id: int, chat_id: int,
@@ -212,14 +233,12 @@ async def _auto_delete_task(
     if not session or session.get("player_msg_id") != player_msg_id:
         return
 
-    # Delete the player message
     try:
         await client.delete_messages(chat_id, session["player_msg_id"])
     except Exception:
         pass
     FS_SESSIONS.pop(user_id, None)
 
-    # Edit the notification to show "Get file again" button
     if notif_msg_id and argument:
         reload_url = f"https://t.me/{temp.U_NAME}?start={argument}"
         try:
@@ -261,6 +280,61 @@ def _schedule_delete(
 
 
 # ======================================================================
+# Auto-delete background task for "Get All Files" bulk send
+# ======================================================================
+async def _auto_delete_all_task(client, chat_id: int, msg_ids: list, secs: int):
+    try:
+        await asyncio.sleep(secs)
+        # Delete in batches of 100 (Telegram API limit)
+        for i in range(0, len(msg_ids), 100):
+            try:
+                await client.delete_messages(chat_id, msg_ids[i:i + 100])
+            except Exception:
+                pass
+    except asyncio.CancelledError:
+        pass
+
+
+# ======================================================================
+# Send all files at once ("Get All Files" action)
+# ======================================================================
+async def _send_all_files(
+    client, user_id: int, messages: list,
+    chat_id: int, auto_del_secs: int, argument: str,
+):
+    """Send every file in the batch sequentially, then auto-delete them all."""
+    total = len(messages)
+    reload_url = f"https://t.me/{temp.U_NAME}?start={argument}" if argument else None
+
+    get_again_kbd = InlineKeyboardMarkup([[
+        InlineKeyboardButton("📥 Get Again", url=reload_url)
+    ]]) if reload_url else None
+
+    sent_ids = []
+    for i, msg in enumerate(messages):
+        try:
+            cap = msg.caption.html if msg.caption else ""
+            cap += f"\n\n📄 <b>File {i + 1} / {total}</b>"
+            if auto_del_secs > 0:
+                cap += (
+                    f"\n<blockquote>⏱ ᴀᴜᴛᴏ-ᴅᴇʟᴇᴛᴇs ɪɴ {get_exp_time(auto_del_secs)}. "
+                    "ꜰᴏʀᴡᴀʀᴅ ᴏʀ sᴀᴠᴇ ɪᴛ.</blockquote>"
+                )
+            sent = await _send_file(client, chat_id, msg, cap, get_again_kbd)
+            sent_ids.append(sent.id)
+        except Exception as e:
+            print(f"[getall] Error sending file {i + 1}: {e}")
+        # Small delay to avoid Telegram flood limits
+        if i < total - 1:
+            await asyncio.sleep(0.6)
+
+    if auto_del_secs > 0 and sent_ids:
+        asyncio.create_task(
+            _auto_delete_all_task(client, chat_id, sent_ids, auto_del_secs)
+        )
+
+
+# ======================================================================
 # PUBLIC: Launch the player  (called from command.py)
 # ======================================================================
 async def launch_fs_player(
@@ -274,14 +348,29 @@ async def launch_fs_player(
 ) -> None:
     """
     Send the first file in player format, store session, schedule auto-delete.
-    `messages` — list of Pyrogram Message objects from the DB channel.
-    `argument` — original base64 start token, used for "Get file again" button.
+    `messages`      — list of Pyrogram Message objects from the DB channel.
+    `argument`      — original base64 start token, used for "Get file again" button.
     `auto_del_secs` — 0 disables auto-delete.
+
+    Any previously open player for this user is closed before launching the new one.
     """
+    # ── Close any existing open player for this user ──────────────────
+    old_session = FS_SESSIONS.pop(user_id, None)
+    if old_session:
+        old_task = old_session.get("delete_task")
+        if old_task and not old_task.done():
+            old_task.cancel()
+        try:
+            await client.delete_messages(
+                old_session["chat_id"], old_session["player_msg_id"]
+            )
+        except Exception:
+            pass
+
     total = len(messages)
     msg = messages[0]
     cap = _build_caption(msg, 0, total, auto_del_secs)
-    kbd = _kbd(user_id, 0, total)
+    kbd = _kbd(user_id, 0, total, argument)
 
     sent = await _send_file(client, chat_id, msg, cap, kbd, reply_to)
 
@@ -291,6 +380,7 @@ async def launch_fs_player(
         "chat_id": chat_id,
         "player_msg_id": sent.id,
         "auto_del_secs": auto_del_secs,
+        "argument": argument,
         "delete_task": None,
     }
     FS_SESSIONS[user_id] = session
@@ -317,7 +407,7 @@ async def launch_fs_player(
 # Callback handler for player buttons
 # ======================================================================
 @Client.on_callback_query(
-    filters.regex(r"^fsp:(next|back|close|noop):\d+$"),
+    filters.regex(r"^fsp:(next|back|close|noop|getall):\d+$"),
     group=-1,
 )
 async def fs_player_cb(client, q: CallbackQuery):
@@ -335,6 +425,33 @@ async def fs_player_cb(client, q: CallbackQuery):
             raise StopPropagation
 
         session = FS_SESSIONS.get(owner_id)
+
+        # ── Get All Files ──────────────────────────────────────────────
+        if action == "getall":
+            if not session:
+                await q.answer("Session expired. Open the link again.", show_alert=True)
+                raise StopPropagation
+
+            # Cancel scheduled delete and close the player
+            old_task = session.get("delete_task")
+            if old_task and not old_task.done():
+                old_task.cancel()
+            try:
+                await client.delete_messages(session["chat_id"], session["player_msg_id"])
+            except Exception:
+                pass
+
+            msgs = session["messages"]
+            auto_del = session.get("auto_del_secs", AUTO_DELETE_SECS)
+            arg = session.get("argument", "")
+            ch_id = session["chat_id"]
+            FS_SESSIONS.pop(owner_id, None)
+
+            await q.answer(f"📥 Sending all {len(msgs)} files…")
+            await _send_all_files(client, owner_id, msgs, ch_id, auto_del, arg)
+            raise StopPropagation
+
+        # ── Session validity check (for next / back / close) ──────────
         if not session or session.get("player_msg_id") != q.message.id:
             try:
                 await q.message.edit_reply_markup(reply_markup=None)
@@ -346,6 +463,7 @@ async def fs_player_cb(client, q: CallbackQuery):
             )
             raise StopPropagation
 
+        # ── Close ──────────────────────────────────────────────────────
         if action == "close":
             task = session.get("delete_task")
             if task and not task.done():
@@ -360,6 +478,7 @@ async def fs_player_cb(client, q: CallbackQuery):
             await q.answer("Player closed.")
             raise StopPropagation
 
+        # ── Next / Previous ────────────────────────────────────────────
         current = session["index"]
         total = len(session["messages"])
 

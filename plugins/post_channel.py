@@ -1,6 +1,7 @@
 from pyrogram import Client, filters
 from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
 from info import VIDEO_CHANNEL, BRAZZER_CHANNEL, NO_IMG, POST_CHANNEL, POST_SHORTLINK, SEND_POST
+from bot_cfg import gcfg
 from database.users_db import db
 from utils import temp, get_shortlink, generate_weird_name, generate_thumbnail
 
@@ -34,7 +35,7 @@ async def index_normal_videos(client, m: Message):
             print(f"♻️ Duplicate Found: {file_name}")
 
         # SEND_POST check
-        if not SEND_POST:
+        if not gcfg('SEND_POST', SEND_POST):
             return
 
         # Bot username cache
@@ -45,7 +46,7 @@ async def index_normal_videos(client, m: Message):
         link = f"https://t.me/{temp.U_NAME}?start=avx-{file_unique_id}"
 
         # Shortlink
-        if POST_SHORTLINK:
+        if gcfg('POST_SHORTLINK', POST_SHORTLINK):
             try:
                 shortlink = await get_shortlink(link)
             except Exception as e:
@@ -66,7 +67,7 @@ async def index_normal_videos(client, m: Message):
         # -----------------------
         # THUMBNAIL SYSTEM (FIXED)
         # -----------------------
-        thumb_to_send = NO_IMG
+        thumb_to_send = gcfg('NO_IMG', NO_IMG)
 
         try:
             # 1️⃣ Telegram thumbnail → download → send as photo
@@ -104,7 +105,7 @@ async def index_normal_videos(client, m: Message):
             print("⚠️ Thumb failed, sending NO_IMG:", e)
             await client.send_photo(
                 chat_id=POST_CHANNEL,
-                photo=NO_IMG,
+                photo=gcfg('NO_IMG', NO_IMG),
                 caption=caption,
                 reply_markup=btn
             )

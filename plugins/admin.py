@@ -38,8 +38,21 @@ async def admin_cmd(client, message):
     row15 = [KeyboardButton("/add_admin"), KeyboardButton("/deladmin")]
     row16 = [KeyboardButton("/admins")]
 
+    # Row 17 — Category management (owner only)
+    row17 = [KeyboardButton("/addcatchannel"), KeyboardButton("/delcatchannel")]
+    row18 = [KeyboardButton("/editcatname"), KeyboardButton("/catchannels")]
+    row19 = [KeyboardButton("/catindex"), KeyboardButton("/categories")]
+    row20 = [KeyboardButton("/setcategory"), KeyboardButton("/clearcategory")]
+
+    # Row 21 — Shortner & DB channels (owner only)
+    row21 = [KeyboardButton("/shortner"), KeyboardButton("/listdb")]
+    row22 = [KeyboardButton("/adddb"), KeyboardButton("/removedb")]
+
+    # Row 23 — Admin config panel (owner only)
+    row23 = [KeyboardButton("/config")]
+
     base_rows = [row1, row2, row3, row4, row5, row6, row7, row8, row9, row10, row11]
-    owner_rows = [row12, row13, row14, row15, row16]
+    owner_rows = [row12, row13, row14, row15, row16, row17, row18, row19, row20, row21, row22, row23]
 
     all_rows = base_rows + (owner_rows if is_owner else [])
 
