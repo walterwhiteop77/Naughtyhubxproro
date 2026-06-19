@@ -9,12 +9,12 @@ def str_to_bool(val, default=False):
 # =========================================================
 # BOT BASIC INFORMATION
 # =========================================================
-API_ID = int(environ.get("API_ID", "20217846"))
-API_HASH = environ.get("API_HASH", "fc2d0079fe53ffadd23fceb32c825285")
+API_ID = int(environ.get("API_ID", "23685822"))
+API_HASH = environ.get("API_HASH", "ff0572e13ff2f63a50f6dc707e0c4c9f")
 BOT_TOKEN = environ.get("BOT_TOKEN", "")
 PORT = int(environ.get("PORT", "8080"))
 TIMEZONE = environ.get("TIMEZONE", "Asia/Kolkata")
-OWNER_USERNAME = environ.get("OWNER_USERNAME", "Uknowme45678")
+OWNER_USERNAME = environ.get("OWNER_USERNAME", "eren645")
 
 # =========================================================
 # DATABASE CONFIGURATION
@@ -25,16 +25,16 @@ DB_NAME = environ.get("DATABASE_NAME", "Cluster0")
 # =========================================================
 # CHANNELS & ADMINS
 # =========================================================
-OWNER_ID = int(environ.get("OWNER_ID", environ.get("ADMINS", "7903367518")))
-ADMINS = int(environ.get("ADMINS", "7903367518"))
+OWNER_ID = int(environ.get("OWNER_ID", environ.get("ADMINS", "6725874739")))
+ADMINS = int(environ.get("ADMINS", "6725874739"))
 
-LOG_CHANNEL = int(environ.get("LOG_CHANNEL", "-1002031127227"))
-PREMIUM_LOGS = int(environ.get("PREMIUM_LOGS", "-1002702898412"))
-VERIFIED_LOG = int(environ.get("VERIFIED_LOG", "-1002378958723"))
+LOG_CHANNEL = int(environ.get("LOG_CHANNEL", "-1003719289913"))
+PREMIUM_LOGS = int(environ.get("PREMIUM_LOGS", "-1003798512506"))
+VERIFIED_LOG = int(environ.get("VERIFIED_LOG", "-1003923118233"))
 
-POST_CHANNEL = int(environ.get("POST_CHANNEL", "-1002843484373"))
-VIDEO_CHANNEL = int(environ.get("VIDEO_CHANNEL", "-1002756243661"))
-BRAZZER_CHANNEL = int(environ.get("BRAZZER_CHANNEL", "-1002737831383"))
+POST_CHANNEL = int(environ.get("POST_CHANNEL", "-1003871870272"))
+VIDEO_CHANNEL = int(environ.get("VIDEO_CHANNEL", "-1003828231424"))
+BRAZZER_CHANNEL = int(environ.get("BRAZZER_CHANNEL", "-1003782456217"))
 
 # DB Channel for File Store (files are copied here and links generated)
 DB_CHANNEL = int(environ.get("DB_CHANNEL", "-1001726493524"))
