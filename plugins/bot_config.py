@@ -113,9 +113,11 @@ async def _prompt(client, query, prompt_text, *, timeout=120):
     try:
         reply = await client.listen(
             chat_id=query.from_user.id,
-            filters=(filters.text & ~filters.regex(r"^/")) | filters.photo,
+            user_id=query.from_user.id,
             timeout=timeout,
         )
+        if reply and reply.text and reply.text.startswith("/"):
+            return None
         return reply
     except asyncio.TimeoutError:
         await query.message.edit_text(

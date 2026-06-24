@@ -178,11 +178,14 @@ async def _listen(client, chat_id: int, timeout: int = 60):
     Returns the Message, or None on timeout/cancel.
     """
     try:
-        return await client.listen(
+        msg = await client.listen(
             chat_id=chat_id,
-            filters=filters.text & ~filters.regex(r"^/"),
+            user_id=chat_id,
             timeout=timeout,
         )
+        if msg and msg.text and msg.text.startswith("/"):
+            return None
+        return msg
     except asyncio.TimeoutError:
         return None
     except Exception:
