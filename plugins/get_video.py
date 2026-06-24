@@ -109,7 +109,7 @@ async def _render_keyboard(
     like_label = ("✅ 👍 Like" if user_react == "like" else "👍 Like")
     dislike_label = ("✅ 👎 Dislike" if user_react == "dislike" else "👎 Dislike")
     bookmark_label = ("📑 Saved" if is_bm else "📑 Bookmark")
-    cat_label = f"🔄 Category: {category or ALL_VIDEOS_LABEL}"
+    cat_label = "🔄 Change Category"
     has_back = index > 0
     prev_label = "⏮ Previous" if has_back else "⏮"
 

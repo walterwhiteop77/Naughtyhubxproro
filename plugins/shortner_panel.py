@@ -175,7 +175,7 @@ async def _listen(client, chat_id: int, timeout: int = 60):
     Wait for the next non-command text message from the user.
     Messages starting with '/' are excluded so /config or /shortner
     commands are never swallowed by an active listen.
-    Returns the Message, or None on timeout.
+    Returns the Message, or None on timeout/cancel.
     """
     try:
         return await client.listen(
@@ -184,6 +184,8 @@ async def _listen(client, chat_id: int, timeout: int = 60):
             timeout=timeout,
         )
     except asyncio.TimeoutError:
+        return None
+    except Exception:
         return None
 
 
@@ -434,6 +436,10 @@ async def sht_back(client: Client, query: CallbackQuery):
 @Client.on_callback_query(filters.regex(r"^sht_cancel$") & admin)
 async def sht_cancel(client: Client, query: CallbackQuery):
     await query.answer("Cancelled.")
+    try:
+        client.cancel_listener(chat_id=query.from_user.id)
+    except Exception:
+        pass
     settings = await db.get_shortner_settings()
     show_back = _has_config_back(query.message)
     await query.message.edit_text(

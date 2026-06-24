@@ -125,6 +125,8 @@ async def _prompt(client, query, prompt_text, *, timeout=120):
             ),
         )
         return None
+    except Exception:
+        return None
 
 
 # ────────────────────────────────────────────────────────────────────────
@@ -409,6 +411,10 @@ async def bcfg_dbchannels_link(client, query: CallbackQuery):
 @Client.on_callback_query(filters.regex(r"^bcfg_cancel$") & admin)
 async def bcfg_cancel(client, query: CallbackQuery):
     await query.answer("Cancelled.")
+    try:
+        client.cancel_listener(chat_id=query.from_user.id)
+    except Exception:
+        pass
     await query.message.edit_text(_main_panel_text(), reply_markup=_main_keyboard())
 
 
