@@ -32,7 +32,7 @@ cat_channels_col = mydb.category_channels   # NEW: DB-backed category channel ma
 
 # ---- categories (env-var fallback, kept for backward compat) ----
 def _categories_from_env() -> list:
-    raw = os.environ.get("CATEGORIES", "Desi,Videsi,Leaked,Snaps")
+    raw = os.environ.get("CATEGORIES", "")
     return [c.strip() for c in raw.split(",") if c.strip()]
 
 
