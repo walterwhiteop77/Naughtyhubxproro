@@ -101,7 +101,10 @@ async def _check_admin(flt, client, update):
     if not hasattr(update, "from_user") or update.from_user is None:
         return False
     user_id = update.from_user.id
+    from info import ADMINS as _ADMINS_LIST
     if user_id == OWNER_ID:
+        return True
+    if isinstance(_ADMINS_LIST, list) and user_id in _ADMINS_LIST:
         return True
     try:
         from database.users_db import db

@@ -25,8 +25,11 @@ DB_NAME = environ.get("DATABASE_NAME", "Cluster0")
 # =========================================================
 # CHANNELS & ADMINS
 # =========================================================
-OWNER_ID = int(environ.get("OWNER_ID", environ.get("ADMINS", "6725874739")))
-ADMINS = int(environ.get("ADMINS", "6725874739"))
+_admins_raw = environ.get("ADMINS", environ.get("OWNER_ID", ""))
+ADMINS = [int(x.strip()) for x in re.split(r"[,\s]+", _admins_raw) if x.strip().lstrip("-").isdigit()]
+OWNER_ID = int(environ.get("OWNER_ID", str(ADMINS[0]) if ADMINS else "0"))
+if OWNER_ID and OWNER_ID not in ADMINS:
+    ADMINS.insert(0, OWNER_ID)
 
 LOG_CHANNEL = int(environ.get("LOG_CHANNEL", "-1003719289913"))
 PREMIUM_LOGS = int(environ.get("PREMIUM_LOGS", "-1003798512506"))
