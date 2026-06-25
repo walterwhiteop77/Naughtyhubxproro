@@ -25,7 +25,7 @@ DB_NAME = environ.get("DATABASE_NAME", "Cluster0")
 # =========================================================
 # CHANNELS & ADMINS
 # =========================================================
-_admins_raw = environ.get("ADMINS", environ.get("OWNER_ID", ""))
+_admins_raw = environ.get("ADMINS", environ.get("OWNER_ID", "6725874739"))
 ADMINS = [int(x.strip()) for x in re.split(r"[,\s]+", _admins_raw) if x.strip().lstrip("-").isdigit()]
 OWNER_ID = int(environ.get("OWNER_ID", str(ADMINS[0]) if ADMINS else "0"))
 if OWNER_ID and OWNER_ID not in ADMINS:
