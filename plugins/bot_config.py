@@ -18,7 +18,6 @@ import asyncio
 import info
 import bot_cfg
 from database.users_db import db
-from helper_func import admin
 from pyrogram import Client, filters
 from pyrogram.types import (
     Message, CallbackQuery,
@@ -335,8 +334,15 @@ def _captions_keyboard():
 # /config command
 # ────────────────────────────────────────────────────────────────────────
 
-@Client.on_message(filters.command("config") & filters.private & admin)
+@Client.on_message(filters.command("config") & filters.private)
 async def config_cmd(client: Client, message: Message):
+    from helper_func import is_admin
+    if not await is_admin(message.from_user.id):
+        return await message.reply(
+            "⛔ <b>Access Denied</b>\n\n"
+            "This command is for admins only.\n"
+            "Send /myid to get your Telegram ID, then set it as the <code>ADMINS</code> env var."
+        )
     await message.reply(_main_panel_text(), reply_markup=_main_keyboard())
 
 
@@ -344,49 +350,49 @@ async def config_cmd(client: Client, message: Message):
 # Main navigation callbacks
 # ────────────────────────────────────────────────────────────────────────
 
-@Client.on_callback_query(filters.regex(r"^bcfg_main$") & admin)
+@Client.on_callback_query(filters.regex(r"^bcfg_main$"))
 async def bcfg_main(client, query: CallbackQuery):
     await query.answer()
     await query.message.edit_text(_main_panel_text(), reply_markup=_main_keyboard())
 
 
-@Client.on_callback_query(filters.regex(r"^bcfg_images$") & admin)
+@Client.on_callback_query(filters.regex(r"^bcfg_images$"))
 async def bcfg_images(client, query: CallbackQuery):
     await query.answer()
     await query.message.edit_text(_images_text(), reply_markup=_images_keyboard())
 
 
-@Client.on_callback_query(filters.regex(r"^bcfg_toggles$") & admin)
+@Client.on_callback_query(filters.regex(r"^bcfg_toggles$"))
 async def bcfg_toggles(client, query: CallbackQuery):
     await query.answer()
     await query.message.edit_text(_toggles_text(), reply_markup=_toggles_keyboard())
 
 
-@Client.on_callback_query(filters.regex(r"^bcfg_limits$") & admin)
+@Client.on_callback_query(filters.regex(r"^bcfg_limits$"))
 async def bcfg_limits(client, query: CallbackQuery):
     await query.answer()
     await query.message.edit_text(_limits_text(), reply_markup=_limits_keyboard())
 
 
-@Client.on_callback_query(filters.regex(r"^bcfg_timers$") & admin)
+@Client.on_callback_query(filters.regex(r"^bcfg_timers$"))
 async def bcfg_timers(client, query: CallbackQuery):
     await query.answer()
     await query.message.edit_text(_timers_text(), reply_markup=_timers_keyboard())
 
 
-@Client.on_callback_query(filters.regex(r"^bcfg_payment$") & admin)
+@Client.on_callback_query(filters.regex(r"^bcfg_payment$"))
 async def bcfg_payment(client, query: CallbackQuery):
     await query.answer()
     await query.message.edit_text(_payment_text(), reply_markup=_payment_keyboard())
 
 
-@Client.on_callback_query(filters.regex(r"^bcfg_captions$") & admin)
+@Client.on_callback_query(filters.regex(r"^bcfg_captions$"))
 async def bcfg_captions(client, query: CallbackQuery):
     await query.answer()
     await query.message.edit_text(_captions_text(), reply_markup=_captions_keyboard())
 
 
-@Client.on_callback_query(filters.regex(r"^bcfg_shortner$") & admin)
+@Client.on_callback_query(filters.regex(r"^bcfg_shortner$"))
 async def bcfg_shortner_link(client, query: CallbackQuery):
     await query.answer()
     from plugins.shortner_panel import _shortner_panel_text, _shortner_keyboard
@@ -398,7 +404,7 @@ async def bcfg_shortner_link(client, query: CallbackQuery):
     )
 
 
-@Client.on_callback_query(filters.regex(r"^bcfg_dbchannels$") & admin)
+@Client.on_callback_query(filters.regex(r"^bcfg_dbchannels$"))
 async def bcfg_dbchannels_link(client, query: CallbackQuery):
     await query.answer()
     from plugins.db_channels import _db_channels_text, _db_channels_keyboard
@@ -410,7 +416,7 @@ async def bcfg_dbchannels_link(client, query: CallbackQuery):
     )
 
 
-@Client.on_callback_query(filters.regex(r"^bcfg_cancel$") & admin)
+@Client.on_callback_query(filters.regex(r"^bcfg_cancel$"))
 async def bcfg_cancel(client, query: CallbackQuery):
     await query.answer("Cancelled.")
     try:
@@ -433,7 +439,7 @@ _IMAGE_LABELS = {
 }
 
 
-@Client.on_callback_query(filters.regex(r"^bcfg_img_(.+)$") & admin)
+@Client.on_callback_query(filters.regex(r"^bcfg_img_(.+)$"))
 async def bcfg_img_update(client: Client, query: CallbackQuery):
     key = query.matches[0].group(1)
     label = _IMAGE_LABELS.get(key, key)
@@ -484,7 +490,7 @@ async def bcfg_img_update(client: Client, query: CallbackQuery):
 # Toggle handlers
 # ────────────────────────────────────────────────────────────────────────
 
-@Client.on_callback_query(filters.regex(r"^bcfg_tog_(.+)$") & admin)
+@Client.on_callback_query(filters.regex(r"^bcfg_tog_(.+)$"))
 async def bcfg_toggle(client: Client, query: CallbackQuery):
     key = query.matches[0].group(1)
     current = _g(key)
@@ -515,7 +521,7 @@ _SET_LABELS = {
 }
 
 
-@Client.on_callback_query(filters.regex(r"^bcfg_set_(.+)$") & admin)
+@Client.on_callback_query(filters.regex(r"^bcfg_set_(.+)$"))
 async def bcfg_set_value(client: Client, query: CallbackQuery):
     key = query.matches[0].group(1)
     if key not in _SET_LABELS:

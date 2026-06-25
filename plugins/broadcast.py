@@ -13,8 +13,21 @@ from utils import temp, get_readable_time, users_broadcast
 
 lock = asyncio.Lock()
 
-@Client.on_message(filters.command("broadcast") & filters.user(ADMINS) & filters.reply)
+@Client.on_message(filters.command("broadcast") & filters.private & filters.reply)
 async def broadcast_users(bot, message):
+    from info import ADMINS as _ADMINS, OWNER_ID as _OWNER_ID
+    uid = message.from_user.id
+    if uid != _OWNER_ID and uid not in _ADMINS:
+        try:
+            from database.users_db import db as _db
+            if not await _db.fs_admin_exist(uid):
+                return await message.reply(
+                    "⛔ <b>Access Denied</b>\n\n"
+                    "This command is for admins only.\n"
+                    "Send /myid to get your Telegram ID, then set it as the <code>ADMINS</code> env var."
+                )
+        except Exception:
+            return await message.reply("⛔ Access Denied.")
     if lock.locked():
         return await message.reply('Currently broadcast processing, Wait for complete.')
 

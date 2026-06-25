@@ -162,7 +162,7 @@ async def dbch_add_inline(client: Client, query: CallbackQuery):
     )
     try:
         reply = await client.listen(
-            chat_id=query.from_user.id, filters=filters.text, timeout=60
+            chat_id=query.from_user.id, user_id=query.from_user.id, timeout=60
         )
     except Exception:
         await prompt.edit_text(
