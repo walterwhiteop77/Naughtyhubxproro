@@ -300,3 +300,16 @@ async def cb_handler(client: Client, query):
             reply_markup=InlineKeyboardMarkup(buttons),
             parse_mode=enums.ParseMode.HTML,
         )
+
+
+# =================================================
+# /myid — returns the user's Telegram ID
+# =================================================
+@Client.on_message(filters.command("myid") & filters.private)
+async def myid_cmd(client, message: Message):
+    user = message.from_user
+    await message.reply(
+        f"👤 <b>Your Telegram ID:</b> <code>{user.id}</code>\n"
+        f"📛 <b>Name:</b> {user.mention}\n\n"
+        f"<i>To enable admin commands, set your <b>ADMINS</b> env var to this ID.</i>"
+    )
