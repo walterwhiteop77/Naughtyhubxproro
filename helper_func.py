@@ -117,6 +117,20 @@ async def _check_admin(flt, client, update):
 admin = filters.create(_check_admin)
 
 
+async def is_admin(user_id: int) -> bool:
+    """Standalone async admin check — use inside handlers for proper error feedback."""
+    from info import ADMINS as _ADMINS_LIST
+    if user_id == OWNER_ID:
+        return True
+    if isinstance(_ADMINS_LIST, list) and user_id in _ADMINS_LIST:
+        return True
+    try:
+        from database.users_db import db
+        return await db.fs_admin_exist(user_id)
+    except Exception:
+        return False
+
+
 # =========================================================
 # FORCE-SUB HELPERS — thin wrappers around the unified check
 # The real logic now lives in utils.check_force_sub().
