@@ -26,6 +26,7 @@ from info import (
     CAT_SHORTLINK_URL, CAT_SHORTLINK_API,
     TUTORIAL_LINK,
 )
+from helper_func import admin
 from utils import temp
 
 
@@ -174,20 +175,15 @@ async def _listen(client, chat_id: int, timeout: int = 60):
     Wait for the next non-command text message from the user.
     Messages starting with '/' are excluded so /config or /shortner
     commands are never swallowed by an active listen.
-    Returns the Message, or None on timeout/cancel.
+    Returns the Message, or None on timeout.
     """
     try:
-        msg = await client.listen(
+        return await client.listen(
             chat_id=chat_id,
-            user_id=chat_id,
+            filters=filters.text & ~filters.regex(r"^/"),
             timeout=timeout,
         )
-        if msg and msg.text and msg.text.startswith("/"):
-            return None
-        return msg
     except asyncio.TimeoutError:
-        return None
-    except Exception:
         return None
 
 
@@ -257,15 +253,8 @@ async def _update_url_api(
 # /shortner command
 # ================================================================
 
-@Client.on_message(filters.command("shortner") & filters.private)
+@Client.on_message(filters.command("shortner") & filters.private & admin)
 async def shortner_cmd(client: Client, message: Message):
-    from helper_func import is_admin
-    if not await is_admin(message.from_user.id):
-        return await message.reply(
-            "⛔ <b>Access Denied</b>\n\n"
-            "This command is for admins only.\n"
-            "Send /myid to get your Telegram ID, then set it as the <code>ADMINS</code> env var."
-        )
     settings = await db.get_shortner_settings()
     temp.SHORTNER_ENABLED = settings.get("is_enabled", True)
     await message.reply(
@@ -278,7 +267,7 @@ async def shortner_cmd(client: Client, message: Message):
 # Toggle on/off
 # ================================================================
 
-@Client.on_callback_query(filters.regex(r"^sht_toggle$"))
+@Client.on_callback_query(filters.regex(r"^sht_toggle$") & admin)
 async def sht_toggle(client: Client, query: CallbackQuery):
     settings = await db.get_shortner_settings()
     new_state = not settings.get("is_enabled", True)
@@ -298,7 +287,7 @@ async def sht_toggle(client: Client, query: CallbackQuery):
 # Update Verify Shortner
 # ================================================================
 
-@Client.on_callback_query(filters.regex(r"^sht_update_av$"))
+@Client.on_callback_query(filters.regex(r"^sht_update_av$") & admin)
 async def sht_update_av(client: Client, query: CallbackQuery):
     await query.answer()
     settings = await db.get_shortner_settings()
@@ -317,7 +306,7 @@ async def sht_update_av(client: Client, query: CallbackQuery):
 # Update Post Shortner
 # ================================================================
 
-@Client.on_callback_query(filters.regex(r"^sht_update_post$"))
+@Client.on_callback_query(filters.regex(r"^sht_update_post$") & admin)
 async def sht_update_post(client: Client, query: CallbackQuery):
     await query.answer()
     settings = await db.get_shortner_settings()
@@ -336,7 +325,7 @@ async def sht_update_post(client: Client, query: CallbackQuery):
 # Update Category Shortner
 # ================================================================
 
-@Client.on_callback_query(filters.regex(r"^sht_update_cat$"))
+@Client.on_callback_query(filters.regex(r"^sht_update_cat$") & admin)
 async def sht_update_cat(client: Client, query: CallbackQuery):
     await query.answer()
     settings = await db.get_shortner_settings()
@@ -355,7 +344,7 @@ async def sht_update_cat(client: Client, query: CallbackQuery):
 # Update Tutorial Link
 # ================================================================
 
-@Client.on_callback_query(filters.regex(r"^sht_tutorial$"))
+@Client.on_callback_query(filters.regex(r"^sht_tutorial$") & admin)
 async def sht_tutorial(client: Client, query: CallbackQuery):
     await query.answer()
     settings = await db.get_shortner_settings()
@@ -399,7 +388,7 @@ async def sht_tutorial(client: Client, query: CallbackQuery):
 # Test Shortners
 # ================================================================
 
-@Client.on_callback_query(filters.regex(r"^sht_test_av$"))
+@Client.on_callback_query(filters.regex(r"^sht_test_av$") & admin)
 async def sht_test_av(client: Client, query: CallbackQuery):
     await query.answer("Testing Verify Shortner…", show_alert=False)
     settings = await db.get_shortner_settings()
@@ -413,7 +402,7 @@ async def sht_test_av(client: Client, query: CallbackQuery):
     await query.message.edit_text(text, reply_markup=_back_kb(show_back))
 
 
-@Client.on_callback_query(filters.regex(r"^sht_test_post$"))
+@Client.on_callback_query(filters.regex(r"^sht_test_post$") & admin)
 async def sht_test_post(client: Client, query: CallbackQuery):
     await query.answer("Testing Post Shortner…", show_alert=False)
     settings = await db.get_shortner_settings()
@@ -431,7 +420,7 @@ async def sht_test_post(client: Client, query: CallbackQuery):
 # Back / Cancel
 # ================================================================
 
-@Client.on_callback_query(filters.regex(r"^sht_back$"))
+@Client.on_callback_query(filters.regex(r"^sht_back$") & admin)
 async def sht_back(client: Client, query: CallbackQuery):
     await query.answer()
     settings = await db.get_shortner_settings()
@@ -442,13 +431,9 @@ async def sht_back(client: Client, query: CallbackQuery):
     )
 
 
-@Client.on_callback_query(filters.regex(r"^sht_cancel$"))
+@Client.on_callback_query(filters.regex(r"^sht_cancel$") & admin)
 async def sht_cancel(client: Client, query: CallbackQuery):
     await query.answer("Cancelled.")
-    try:
-        client.cancel_listener(chat_id=query.from_user.id)
-    except Exception:
-        pass
     settings = await db.get_shortner_settings()
     show_back = _has_config_back(query.message)
     await query.message.edit_text(
