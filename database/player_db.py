@@ -30,9 +30,16 @@ counters_col = mydb.counters
 cat_channels_col = mydb.category_channels   # NEW: DB-backed category channel map
 
 
-# ---- categories (env-var fallback, kept for backward compat) ----
+# ---- categories (only from env var if explicitly set — no hardcoded defaults) ----
 def _categories_from_env() -> list:
-    raw = os.environ.get("CATEGORIES", "")
+    """
+    Returns categories from the CATEGORIES env var only if it is explicitly set.
+    No hardcoded defaults — if the env var is absent or empty, returns [].
+    Categories should be managed by the admin via /addcatchannel.
+    """
+    raw = os.environ.get("CATEGORIES", "").strip()
+    if not raw:
+        return []
     return [c.strip() for c in raw.split(",") if c.strip()]
 
 
@@ -40,9 +47,12 @@ def _categories_from_channels_env() -> list:
     """
     Pulls category names out of the legacy CATEGORY_CHANNELS env var.
     Format:  "Desi:-1001234 Videsi:-1005678"
-    Kept as a fallback; DB-backed channels take precedence at runtime.
+    Only used if the env var is explicitly set; no hardcoded defaults.
+    DB-backed channels (set via /addcatchannel) take precedence at runtime.
     """
-    raw = os.environ.get("CATEGORY_CHANNELS", "").replace(",", " ")
+    raw = os.environ.get("CATEGORY_CHANNELS", "").replace(",", " ").strip()
+    if not raw:
+        return []
     names = []
     for entry in raw.split():
         if ":" not in entry:
@@ -56,9 +66,10 @@ def _categories_from_channels_env() -> list:
 
 def get_categories() -> list:
     """
-    Sync helper — returns category names from env vars only.
-    Used as a fallback where async is not available.
-    For the full list (including DB channels) use PlayerDB.get_categories_merged().
+    Sync helper — returns category names from env vars only (if explicitly set).
+    Returns [] when no env var is configured; no hardcoded defaults.
+    For the full list (including DB-backed admin channels) use PlayerDB.get_categories_merged().
+    Categories are intended to be managed by admins via /addcatchannel.
     """
     seen = set()
     result = []
@@ -209,7 +220,9 @@ class PlayerDB:
 
     async def get_categories_merged(self) -> list:
         """
-        Returns all category names — DB channels first, then env-var fallbacks.
+        Returns all category names — DB channels (set via /addcatchannel) first,
+        then any names from the CATEGORIES / CATEGORY_CHANNELS env vars (only if
+        those vars are explicitly set; no hardcoded defaults).
         Deduplicates so no name appears twice.
         Use this in async contexts (e.g. the player category picker).
         """
