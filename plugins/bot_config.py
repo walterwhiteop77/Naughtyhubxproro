@@ -117,7 +117,7 @@ async def _prompt(client, query, prompt_text, *, timeout=120):
             timeout=timeout,
         )
         return reply
-    except asyncio.TimeoutError:
+    except (asyncio.TimeoutError, TimeoutError):
         await query.message.edit_text(
             "⏰ Timed out. No changes made.",
             reply_markup=InlineKeyboardMarkup(
@@ -409,6 +409,10 @@ async def bcfg_dbchannels_link(client, query: CallbackQuery):
 @Client.on_callback_query(filters.regex(r"^bcfg_cancel$") & admin)
 async def bcfg_cancel(client, query: CallbackQuery):
     await query.answer("Cancelled.")
+    try:
+        client.stop_listening(chat_id=query.from_user.id)
+    except Exception:
+        pass
     await query.message.edit_text(_main_panel_text(), reply_markup=_main_keyboard())
 
 

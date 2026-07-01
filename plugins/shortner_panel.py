@@ -183,7 +183,7 @@ async def _listen(client, chat_id: int, timeout: int = 60):
             filters=filters.text & ~filters.regex(r"^/"),
             timeout=timeout,
         )
-    except asyncio.TimeoutError:
+    except (asyncio.TimeoutError, TimeoutError):
         return None
 
 
@@ -434,6 +434,10 @@ async def sht_back(client: Client, query: CallbackQuery):
 @Client.on_callback_query(filters.regex(r"^sht_cancel$") & admin)
 async def sht_cancel(client: Client, query: CallbackQuery):
     await query.answer("Cancelled.")
+    try:
+        client.stop_listening(chat_id=query.from_user.id)
+    except Exception:
+        pass
     settings = await db.get_shortner_settings()
     show_back = _has_config_back(query.message)
     await query.message.edit_text(
