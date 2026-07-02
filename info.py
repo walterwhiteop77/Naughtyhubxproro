@@ -9,12 +9,12 @@ def str_to_bool(val, default=False):
 # =========================================================
 # BOT BASIC INFORMATION
 # =========================================================
-API_ID = int(environ.get("API_ID", "23685822"))
-API_HASH = environ.get("API_HASH", "ff0572e13ff2f63a50f6dc707e0c4c9f")
+API_ID = int(environ.get("API_ID", "20217846"))
+API_HASH = environ.get("API_HASH", "fc2d0079fe53ffadd23fceb32c825285")
 BOT_TOKEN = environ.get("BOT_TOKEN", "")
 PORT = int(environ.get("PORT", "8080"))
 TIMEZONE = environ.get("TIMEZONE", "Asia/Kolkata")
-OWNER_USERNAME = environ.get("OWNER_USERNAME", "eren645")
+OWNER_USERNAME = environ.get("OWNER_USERNAME", "Uknowme45678")
 
 # =========================================================
 # DATABASE CONFIGURATION
@@ -25,19 +25,16 @@ DB_NAME = environ.get("DATABASE_NAME", "Cluster0")
 # =========================================================
 # CHANNELS & ADMINS
 # =========================================================
-_admins_raw = environ.get("ADMINS", environ.get("OWNER_ID", "6725874739"))
-ADMINS = [int(x.strip()) for x in re.split(r"[,\s]+", _admins_raw) if x.strip().lstrip("-").isdigit()]
-OWNER_ID = int(environ.get("OWNER_ID", str(ADMINS[0]) if ADMINS else "0"))
-if OWNER_ID and OWNER_ID not in ADMINS:
-    ADMINS.insert(0, OWNER_ID)
+OWNER_ID = int(environ.get("OWNER_ID", environ.get("ADMINS", "0")))
+ADMINS = int(environ.get("ADMINS", "0"))
 
-LOG_CHANNEL = int(environ.get("LOG_CHANNEL", "-1003719289913"))
-PREMIUM_LOGS = int(environ.get("PREMIUM_LOGS", "-1003798512506"))
-VERIFIED_LOG = int(environ.get("VERIFIED_LOG", "-1003923118233"))
+LOG_CHANNEL = int(environ.get("LOG_CHANNEL", "-1002031127227"))
+PREMIUM_LOGS = int(environ.get("PREMIUM_LOGS", "-1002702898412"))
+VERIFIED_LOG = int(environ.get("VERIFIED_LOG", "-1002378958723"))
 
-POST_CHANNEL = int(environ.get("POST_CHANNEL", "-1003871870272"))
-VIDEO_CHANNEL = int(environ.get("VIDEO_CHANNEL", "-1003828231424"))
-BRAZZER_CHANNEL = int(environ.get("BRAZZER_CHANNEL", "-1003782456217"))
+POST_CHANNEL = int(environ.get("POST_CHANNEL", "-1002843484373"))
+VIDEO_CHANNEL = int(environ.get("VIDEO_CHANNEL", "-1002756243661"))
+BRAZZER_CHANNEL = int(environ.get("BRAZZER_CHANNEL", "-1002737831383"))
 
 # DB Channel for File Store (files are copied here and links generated)
 DB_CHANNEL = int(environ.get("DB_CHANNEL", "-1001726493524"))
@@ -59,7 +56,7 @@ DISABLE_CHANNEL_BUTTON = str_to_bool(environ.get("DISABLE_CHANNEL_BUTTON"), Fals
 # =========================================================
 # LIMITS
 # =========================================================
-DAILY_LIMIT = int(environ.get("DAILY_LIMIT", "5"))
+DAILY_LIMIT = int(environ.get("DAILY_LIMIT", "100"))
 VERIFICATION_DAILY_LIMIT = int(environ.get("VERIFICATION_DAILY_LIMIT", "700"))
 PREMIUM_DAILY_LIMIT = int(environ.get("PREMIUM_DAILY_LIMIT", "50050"))
 BOOKMARK_LIMIT_FREE = int(environ.get("BOOKMARK_LIMIT_FREE", "5"))
@@ -80,7 +77,7 @@ FS_VERIFY_EXPIRE = int(environ.get("FS_VERIFY_EXPIRE", "86400"))
 
 # Category change verification (separate shortlink API from main verify)
 CAT_SHORTLINK_URL = environ.get("CAT_SHORTLINK_URL", "vplink.in")
-CAT_SHORTLINK_API = environ.get("CAT_SHORTLINK_API", "f9da968c27a8594f2bbc3b2cd1e8778fa756b3a5")
+CAT_SHORTLINK_API = environ.get("CAT_SHORTLINK_API", "")
 CAT_VERIFY_EXPIRE = int(environ.get("CAT_VERIFY_EXPIRE", "86400"))  # seconds (default 24 h)
 
 # Force-sub invite link expiry (seconds, 0 = no expiry)
@@ -110,4 +107,4 @@ CUSTOM_CAPTION = environ.get("CUSTOM_CAPTION", "@naughtyflicks")
 # =========================================================
 # WEB APP
 # =========================================================
-WEB_APP_URL = environ.get("WEB_APP_URL", "https://civilian-harriot-filmyflixhd-12852492.koyeb.app/")
+WEB_APP_URL = environ.get("WEB_APP_URL", "https://poii.onrender.com")

@@ -101,14 +101,56 @@ async def _check_admin(flt, client, update):
     if not hasattr(update, "from_user") or update.from_user is None:
         return False
     user_id = update.from_user.id
+
+    # OWNER_ID == 0 means the env var was never configured
+    if OWNER_ID == 0:
+        try:
+            from pyrogram.types import Message, CallbackQuery
+            msg = (
+                "⚠️ <b>OWNER_ID is not configured!</b>\n\n"
+                f"Your Telegram ID is <code>{user_id}</code>\n\n"
+                "Add this to your environment variables and restart the bot:\n"
+                f"<code>OWNER_ID = {user_id}</code>"
+            )
+            if isinstance(update, Message):
+                await update.reply(msg)
+            elif isinstance(update, CallbackQuery):
+                await update.answer(f"⚠️ OWNER_ID not set! Add OWNER_ID={user_id} to env vars.", show_alert=True)
+        except Exception:
+            pass
+        return False
+
     if user_id == OWNER_ID:
         return True
+
     try:
         from database.users_db import db
-        return await db.fs_admin_exist(user_id)
+        is_admin = await db.fs_admin_exist(user_id)
     except Exception as e:
         print(f"[admin filter error] uid={user_id} err={e}")
+        is_admin = False
+
+    if not is_admin:
+        try:
+            from pyrogram.types import Message, CallbackQuery
+            if isinstance(update, Message):
+                await update.reply(
+                    "⛔ <b>Unauthorized.</b>\n\n"
+                    f"Your Telegram ID: <code>{user_id}</code>\n"
+                    f"Bot OWNER_ID is set to: <code>{OWNER_ID}</code>\n\n"
+                    "If you are the owner, set <b>OWNER_ID</b> in your env vars to "
+                    f"<code>{user_id}</code> and restart the bot."
+                )
+            elif isinstance(update, CallbackQuery):
+                await update.answer(
+                    f"⛔ Unauthorized. Your ID: {user_id} | Expected: {OWNER_ID}",
+                    show_alert=True,
+                )
+        except Exception:
+            pass
         return False
+
+    return True
 
 
 admin = filters.create(_check_admin)
