@@ -56,7 +56,7 @@ DISABLE_CHANNEL_BUTTON = str_to_bool(environ.get("DISABLE_CHANNEL_BUTTON"), Fals
 # =========================================================
 # LIMITS
 # =========================================================
-DAILY_LIMIT = int(environ.get("DAILY_LIMIT", "100"))
+DAILY_LIMIT = int(environ.get("DAILY_LIMIT", "5"))
 VERIFICATION_DAILY_LIMIT = int(environ.get("VERIFICATION_DAILY_LIMIT", "700"))
 PREMIUM_DAILY_LIMIT = int(environ.get("PREMIUM_DAILY_LIMIT", "50050"))
 BOOKMARK_LIMIT_FREE = int(environ.get("BOOKMARK_LIMIT_FREE", "5"))
